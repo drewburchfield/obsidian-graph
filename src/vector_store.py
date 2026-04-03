@@ -1,11 +1,9 @@
 """
-PostgreSQL+pgvector Vector Store for Obsidian Graph MCP Server.
+PostgreSQL+pgvector Vector Store for Obsidian Graph.
 
-Adapted from oachatbot's PostgreSQL store, simplified for Obsidian notes:
-- Stores whole notes and chunked documents (automatic chunking for large notes)
-- Uses 'path' as identifier (not document_id)
-- No site_id or publish_date (Obsidian-specific)
-- Adds connection_count materialization for graph queries
+Stores notes (whole or chunked) with vector embeddings for semantic search,
+graph analysis, and hub/orphan detection. Uses connection_count materialization
+for fast graph queries.
 """
 
 import asyncio

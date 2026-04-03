@@ -25,6 +25,10 @@ build/
 .coverage
 htmlcov/
 
+# Type checking / linting caches
+.mypy_cache/
+.ruff_cache/
+
 # IDE
 .vscode/
 .idea/

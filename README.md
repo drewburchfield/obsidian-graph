@@ -217,10 +217,6 @@ POSTGRES_MIN_CONNECTIONS=5
 POSTGRES_MAX_CONNECTIONS=20
 EMBEDDING_BATCH_SIZE=128
 EMBEDDING_REQUESTS_PER_MINUTE=300
-
-# HNSW index (advanced)
-HNSW_M=16
-HNSW_EF_CONSTRUCTION=64
 ```
 
 ### Cloud Sync Support (iCloud, Google Drive, Dropbox, OneDrive)
@@ -268,7 +264,7 @@ By default, the indexer excludes common system and tool folders:
 drafts/
 ```
 
-See [`.obsidian-graph.conf.example`](.obsidian-graph.conf.example) for more patterns and examples.
+See [`docs/obsidian-graph.conf.example`](docs/obsidian-graph.conf.example) for more patterns and examples.
 
 **Pattern Syntax:**
 

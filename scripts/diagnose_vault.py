@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "/app")
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.embedder import VoyageEmbedder
 from src.exceptions import EmbeddingError

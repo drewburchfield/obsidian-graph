@@ -96,19 +96,24 @@ async def test_get_orphaned_notes_queries_correctly(mock_store):
 
 
 @pytest.mark.asyncio
-async def test_refresh_lock_prevents_concurrent_execution(mock_store):
-    """Test that refresh lock prevents multiple concurrent refreshes."""
+async def test_refresh_lock_serializes_concurrent_refreshes(mock_store):
+    """Test that _refresh_lock serializes concurrent refresh calls.
+
+    When 5 concurrent callers acquire the lock and call _do_refresh,
+    all 5 complete but run serially (not concurrently).
+    """
     analyzer = HubAnalyzer(mock_store)
 
     # Mock database
     mock_conn = AsyncMock()
+    mock_conn.fetchval = AsyncMock(return_value=3)
     mock_conn.fetch = AsyncMock(
-        return_value=[
-            {"path": "note1.md", "embedding": [0.1] * 1024},
-            {"path": "note2.md", "embedding": [0.2] * 1024},
+        side_effect=[
+            [{"path": "note1.md"}, {"path": "note2.md"}, {"path": "note3.md"}],
+            [],  # end of batches
         ]
+        * 5  # Provide enough return values for 5 calls
     )
-    mock_conn.fetchval = AsyncMock(return_value=0)
     mock_conn.execute = AsyncMock()
 
     class MockAcquire:
@@ -121,28 +126,34 @@ async def test_refresh_lock_prevents_concurrent_execution(mock_store):
     mock_store.pool = MagicMock()
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
-    # Track refresh executions
+    # Track concurrent execution
+    concurrent_count = 0
+    max_concurrent = 0
     refresh_count = 0
-    count_lock = asyncio.Lock()
 
-    original_refresh = analyzer._do_refresh
+    original_do_refresh = analyzer._do_refresh
 
-    async def tracked_refresh(threshold):
-        nonlocal refresh_count
-        async with count_lock:
-            refresh_count += 1
-        await original_refresh(threshold)
+    async def tracked_do_refresh(threshold):
+        nonlocal concurrent_count, max_concurrent, refresh_count
+        concurrent_count += 1
+        max_concurrent = max(max_concurrent, concurrent_count)
+        await asyncio.sleep(0.02)  # Give time for concurrency to manifest
+        await original_do_refresh(threshold)
+        concurrent_count -= 1
+        refresh_count += 1
 
-    analyzer._do_refresh = tracked_refresh
+    async def locked_refresh(threshold):
+        async with analyzer._refresh_lock:
+            await tracked_do_refresh(threshold)
 
-    # Start 5 concurrent refreshes
-    tasks = [asyncio.create_task(tracked_refresh(0.5)) for _ in range(5)]
-
+    # Start 5 concurrent refreshes through the lock
+    tasks = [asyncio.create_task(locked_refresh(0.5)) for _ in range(5)]
     await asyncio.gather(*tasks)
 
-    # All should have executed (but serially due to lock)
-    # The lock ensures they don't run concurrently, but all complete
-    assert refresh_count == 5
+    # All 5 should complete
+    assert refresh_count == 5, f"Expected 5 refreshes, got {refresh_count}"
+    # But max concurrency should be 1 (serialized by lock)
+    assert max_concurrent == 1, f"Expected max concurrency 1, got {max_concurrent}"
 
 
 @pytest.mark.asyncio

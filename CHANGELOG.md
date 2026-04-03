@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Obsidian Graph MCP Server will be documented in this file.
+All notable changes to Obsidian Graph will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -53,18 +53,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Stale database entries no longer persist after file deletions (Issue #2)
 - File moves now update paths correctly instead of creating duplicates
+- Embedding token limit errors on large/dense notes: dynamic batch sizing with retry-halving (#7)
+- Hub notes returning empty on first call: inline-await refresh instead of fire-and-forget (#8)
+- Event loop blocking during embedding API calls: async embedder methods (#9)
+- Missing database timeouts on 6 vector store methods (#9)
+- Schema trigger overwriting file modification times (#10)
+- Hub analyzer raising wrong exception type (#10)
+- Dead code cleanup and weak test assertions (#10)
 
 ### Changed
 - File watcher now defaults to polling mode in Docker (native filesystem events unreliable)
 - Startup scan now cleans up orphan paths before re-indexing stale files
-
-## [Unreleased - Planned]
+- Renamed project from "MCP Server" to "Obsidian Graph" (semantic knowledge graph engine)
+- Container names: obsidian-graph (app), obsidian-graph-pgvector (db)
 
 ### Planned
-- Additional embedding provider support (OpenAI, SentenceTransformers)
+- Separate src/ into engine/ and mcp/ packages
+- Additional embedding provider support
 - Cluster analysis tool (community detection)
-- Temporal statistics tool
-- Embedding validation tool
 - Performance optimizations for large vaults (>10k notes)
-- GitHub Actions CI/CD
-- Code coverage reporting
