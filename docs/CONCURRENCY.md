@@ -188,7 +188,7 @@ pytest tests/test_race_conditions.py::test_hub_analyzer_concurrent_refresh_race 
 **Diagnosis:**
 ```bash
 # Check if any locks are held
-docker exec -it mcp-obsidian-graph python3 -c "
+docker exec -it obsidian-graph python3 -c "
 import asyncio
 # Print all running tasks
 for task in asyncio.all_tasks():
@@ -196,7 +196,7 @@ for task in asyncio.all_tasks():
 "
 
 # Check container CPU usage
-docker stats mcp-obsidian-graph
+docker stats obsidian-graph
 ```
 
 **Common Causes:**
@@ -211,10 +211,10 @@ docker stats mcp-obsidian-graph
 **Symptom**: Duplicate operations, inconsistent state, unexpected behavior
 
 **Diagnosis:**
-1. Enable debug logging: `LOG_LEVEL=DEBUG` in `.env.instance`
+1. Enable debug logging: `LOG_LEVEL=DEBUG` in `.env`
 2. Look for duplicate log messages:
    ```bash
-   docker logs mcp-obsidian-graph | grep "Re-indexed:" | sort | uniq -c
+   docker logs obsidian-graph | grep "Re-indexed:" | sort | uniq -c
    ```
 3. Run race condition tests: `pytest tests/test_race_conditions.py -v`
 

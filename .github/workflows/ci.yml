@@ -96,8 +96,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t obsidian-graph-mcp .
+        run: docker build -t obsidian-graph .
 
       - name: Verify image runs
         run: |
-          docker run --rm obsidian-graph-mcp python -c "from src.server import app; print('Import successful')"
+          docker run --rm obsidian-graph python -c "from src.server import app; print('Import successful')"

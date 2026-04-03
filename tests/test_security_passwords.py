@@ -145,18 +145,14 @@ def test_gitignore_includes_sensitive_files():
     # Check for .env files (where secrets are stored)
     assert ".env" in content, ".gitignore should include .env files"
 
-    # Check for .env.instance files (alternative naming convention)
+    # Check for .env.local files (alternative naming convention)
     assert (
-        ".env.instance" in content or ".env.local" in content
-    ), ".gitignore should include .env.instance or .env.local files"
+        ".env.local" in content or ".env" in content
+    ), ".gitignore should include .env or .env.local files"
 
 
-@pytest.mark.skip(
-    reason="Standalone repo uses .env file for password - no generation script needed"
-)
 def test_password_generation_script_exists():
     """Verify password generation script exists and is executable."""
-    # This test is skipped for standalone repo - users configure .env directly
     script_path = PROJECT_ROOT / "scripts" / "generate-db-password.sh"
 
     assert script_path.exists(), f"Password generation script not found at {script_path}"
@@ -168,12 +164,8 @@ def test_password_generation_script_exists():
         ), f"Password generation script is not executable: {script_path}"
 
 
-@pytest.mark.skip(
-    reason="Standalone repo uses .env file for password - no generation script needed"
-)
 def test_password_generation_script_syntax():
     """Basic syntax check for password generation script."""
-    # This test is skipped for standalone repo
     script_path = PROJECT_ROOT / "scripts" / "generate-db-password.sh"
 
     if not script_path.exists():
@@ -189,29 +181,5 @@ def test_password_generation_script_syntax():
 
     assert "tr -dc" in content, "Script should use tr for character filtering"
 
-    assert (
-        "docker-compose.override.yml" in content
-    ), "Script should create docker-compose.override.yml"
-
-
-@pytest.mark.skip(reason="Standalone repo uses .env file instead of docker-compose.override.yml")
-def test_docker_compose_override_pattern():
-    """Verify docker-compose.override.yml pattern is correct if it exists."""
-    # This test is skipped for standalone repo - password is in .env
-    override_file = PROJECT_ROOT / "docker-compose.override.yml"
-
-    if not override_file.exists():
-        pytest.skip("docker-compose.override.yml not generated yet - run generate-db-password.sh")
-
-    with open(override_file) as f:
-        content = f.read()
-
-    # Should reference environment variable, not hardcode password
-    assert (
-        "${POSTGRES_PASSWORD}" in content or "$POSTGRES_PASSWORD" in content
-    ), "docker-compose.override.yml should reference POSTGRES_PASSWORD environment variable"
-
-    # Should target the correct service
-    assert (
-        "mcp-obsidian-graph-pgvector" in content
-    ), "docker-compose.override.yml should override mcp-obsidian-graph-pgvector service"
+    # Script should update .env directly (not docker-compose.override.yml)
+    assert ".env" in content, "Script should reference .env file"

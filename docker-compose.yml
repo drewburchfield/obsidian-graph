@@ -1,15 +1,15 @@
 services:
   obsidian-graph:
     build: .
-    image: mcp-obsidian-graph
-    container_name: mcp-obsidian-graph
+    image: obsidian-graph
+    container_name: obsidian-graph
     stdin_open: true
     tty: true
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      - POSTGRES_HOST=mcp-obsidian-graph-pgvector
+      - POSTGRES_HOST=obsidian-graph-pgvector
       - POSTGRES_PORT=5432
       - POSTGRES_DB=obsidian_graph
       - POSTGRES_USER=obsidian
@@ -44,7 +44,7 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg15
-    container_name: mcp-obsidian-graph-pgvector
+    container_name: obsidian-graph-pgvector
     environment:
       - POSTGRES_DB=obsidian_graph
       - POSTGRES_USER=obsidian
@@ -72,7 +72,7 @@ services:
 
 networks:
   default:
-    name: obsidian-graph-mcp
+    name: obsidian-graph
 
 volumes:
   obsidian-postgres-data:
