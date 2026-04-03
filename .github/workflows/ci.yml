@@ -20,13 +20,13 @@ jobs:
       - name: Install dependencies
         run: |
           pip install ruff black mypy
-          pip install -r requirements.txt
+          pip install $(python3 -c "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))")
 
       - name: Run ruff
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ scripts/
 
       - name: Run black (check only)
-        run: black --check src/ tests/
+        run: black --check src/ tests/ scripts/
 
       - name: Run mypy
         run: mypy src/ --ignore-missing-imports
@@ -57,7 +57,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install $(python3 -c "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))") pytest pytest-asyncio
 
       - name: Initialize database schema
         env:
