@@ -29,6 +29,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
 markers = [
+    "e2e: marks tests as end-to-end Docker tests (run with '-m e2e')",
     "stress: marks tests as stress tests (deselect with '-m \"not stress\"')",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
@@ -78,7 +79,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S106", "T201", "S108", "B007", "F841", "E402"]  # Allow assert, passwords, print, /tmp, unused vars, non-top imports in tests
-"scripts/diagnose_vault.py" = ["T201"]  # CLI diagnostic script uses print() for output
+"scripts/*" = ["T201", "S108"]  # CLI scripts use print() and /tmp paths
 
 [tool.black]
 line-length = 100

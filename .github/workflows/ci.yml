@@ -72,7 +72,7 @@ jobs:
           POSTGRES_PASSWORD: testpassword
           POSTGRES_DB: obsidian_graph
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-        run: pytest tests/ -v --ignore=tests/test_e2e.py
+        run: pytest tests/ -v -m "not e2e" --ignore=tests/test_e2e.py
 
   security:
     runs-on: ubuntu-latest
