@@ -146,7 +146,8 @@ class GraphBuilder:
         try:
             async with self.store.pool.acquire() as conn:
                 result = await conn.fetchrow(
-                    "SELECT path, title FROM notes WHERE path = $1", note_path
+                    "SELECT path, title FROM notes WHERE path = $1 ORDER BY chunk_index LIMIT 1",
+                    note_path,
                 )
 
                 if result:

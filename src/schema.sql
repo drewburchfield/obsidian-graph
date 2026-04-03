@@ -1,10 +1,14 @@
--- Obsidian Graph MCP Server - PostgreSQL Schema
+-- Obsidian Graph - PostgreSQL Schema
 --
--- This schema is designed for storing whole Obsidian notes (not chunked documents)
--- with vector embeddings for semantic search and graph analysis.
+-- Stores notes (whole or chunked) with vector embeddings for
+-- semantic search, graph analysis, and hub/orphan detection.
 
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Migration: remove trigger that overwrites file mtime with DB timestamp
+DROP TRIGGER IF EXISTS trigger_update_notes_modified_at ON notes;
+DROP FUNCTION IF EXISTS update_modified_at();
 
 -- Main notes table with vector embeddings
 -- Supports chunking for large notes (voyage-context-3 pattern)
@@ -42,18 +46,3 @@ CREATE INDEX IF NOT EXISTS idx_notes_modified_at ON notes(modified_at);
 CREATE INDEX IF NOT EXISTS idx_notes_connection_count ON notes(connection_count DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_last_indexed_at ON notes(last_indexed_at);
 CREATE INDEX IF NOT EXISTS idx_notes_chunk_index ON notes(chunk_index);
-
--- Function to update modified_at timestamp automatically
-CREATE OR REPLACE FUNCTION update_modified_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.modified_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to auto-update modified_at on note updates
-CREATE TRIGGER trigger_update_notes_modified_at
-    BEFORE UPDATE ON notes
-    FOR EACH ROW
-    EXECUTE FUNCTION update_modified_at();
