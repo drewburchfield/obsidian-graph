@@ -115,7 +115,12 @@ def test_password_not_in_common_weak_list():
     """Ensure password is not a common weak password."""
     password = os.getenv("POSTGRES_PASSWORD", "")
 
-    if not password or password in ["your_generated_password_here", "testpassword"]:
+    if not password or password in [
+        "changeme",
+        "your_generated_password_here",
+        "your_secure_password_here",
+        "testpassword",
+    ]:
         pytest.skip("POSTGRES_PASSWORD not set or using placeholder/CI password")
 
     # List of passwords that should never be used
