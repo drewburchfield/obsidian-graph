@@ -40,7 +40,7 @@ async def diagnose():
 
             # Try to embed single file
             try:
-                embedding = await embedder.embed(content, input_type="document")
+                await embedder.embed(content, input_type="document")
                 successful += 1
                 if i % 10 == 0:
                     print(f"[{i}/{len(md_files)}] " f"Progress: {successful} successful")
