@@ -1,17 +1,17 @@
-# Obsidian Graph MCP Server
+# Obsidian Graph
 
 [![CI](https://github.com/drewburchfield/obsidian-graph-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/drewburchfield/obsidian-graph-mcp/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io/)
 
-Semantic knowledge graph navigation for Obsidian vaults using AI-powered vector embeddings and PostgreSQL+pgvector.
+Semantic knowledge graph engine for markdown vaults. Discovers hidden connections between notes using AI-powered vector embeddings and PostgreSQL+pgvector. Accessible to AI assistants via MCP.
 
 ## Overview
 
-This MCP server enables AI-powered semantic analysis of your Obsidian vault, discovering hidden connections and relationships between notes through vector embeddings. Unlike keyword search or explicit links, it finds conceptual similarity and builds multi-hop knowledge graphs.
+Obsidian Graph builds a semantic knowledge graph of your markdown vault, discovering relationships between notes that go beyond keywords and explicit links. It embeds your notes as vectors using Voyage Context-3, stores them in PostgreSQL+pgvector, and provides tools for semantic search, multi-hop graph traversal, hub detection, and orphan analysis.
 
-**Use case:** Powers the `/find-connections` slash command for discovering non-obvious relationships, bridge notes, and conceptual clusters in your knowledge base.
+Designed for Obsidian vaults but works with any folder of markdown files. Connects to any AI app or harness compatible with the Model Context Protocol (MCP).
 
 ## Features
 
