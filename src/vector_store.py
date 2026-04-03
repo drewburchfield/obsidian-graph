@@ -2,7 +2,7 @@
 PostgreSQL+pgvector Vector Store for Obsidian Graph MCP Server.
 
 Adapted from oachatbot's PostgreSQL store, simplified for Obsidian notes:
-- Stores whole notes (not chunked documents)
+- Stores whole notes and chunked documents (automatic chunking for large notes)
 - Uses 'path' as identifier (not document_id)
 - No site_id or publish_date (Obsidian-specific)
 - Adds connection_count materialization for graph queries

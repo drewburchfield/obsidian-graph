@@ -42,6 +42,14 @@ def _redact_sensitive(message: str) -> str:
     return message
 
 
+def _is_token_limit_error(e: Exception) -> bool:
+    """Check if an exception is a deterministic token limit error (not retryable)."""
+    error_lower = str(e).lower()
+    return ("token" in error_lower and "context window" in error_lower) or (
+        "too many tokens" in error_lower
+    )
+
+
 class VoyageEmbedder:
     """
     Voyage Context-3 embedding client with caching and rate limiting.
@@ -165,16 +173,33 @@ class VoyageEmbedder:
 
         # If under limit, embed whole
         if estimated_tokens < 30000:
-            embedding = self.embed(text, input_type=input_type)
-            return ([embedding], 1)
+            try:
+                embedding = self.embed(text, input_type=input_type)
+                return ([embedding], 1)
+            except EmbeddingError as e:
+                if _is_token_limit_error(e):
+                    logger.warning(
+                        f"Whole-note embed failed (est. {estimated_tokens:.0f} tokens), "
+                        f"falling back to chunked embedding"
+                    )
+                    # Fall through to chunking below
+                else:
+                    raise
 
         # Split into chunks
         chunks = self.chunk_text(text, chunk_size=chunk_size, overlap=0)
         logger.info(f"Large note: splitting into {len(chunks)} chunks")
 
-        # Embed chunks in batches (Voyage limit: ~60 chunks = 30k tokens per contextualized call)
+        # Calculate safe batch size based on actual chunk sizes
+        total_chars = sum(len(c) for c in chunks)
+        avg_chars_per_chunk = total_chars / len(chunks)
+        # Conservative: assume 3 chars/token for dense content safety margin
+        estimated_tokens_per_chunk = avg_chars_per_chunk / 3
+        batch_size = max(1, int(28000 / estimated_tokens_per_chunk))
+        logger.info(f"Dynamic batch size: {batch_size} (avg {avg_chars_per_chunk:.0f} chars/chunk)")
+
+        # Embed chunks in batches
         all_embeddings = []
-        batch_size = 60  # ~30k tokens per batch
 
         try:
             for i in range(0, len(chunks), batch_size):
@@ -263,6 +288,14 @@ class VoyageEmbedder:
             except Exception as e:
                 last_error = e
                 error_msg = _redact_sensitive(str(e))
+
+                # Token limit errors are deterministic, don't retry
+                if _is_token_limit_error(e):
+                    logger.error(f"Token limit error (not retryable): {error_msg}")
+                    raise EmbeddingError(
+                        f"Token limit exceeded: {error_msg}",
+                        cause=e,
+                    ) from e
 
                 # Check if it's a rate limit error (429)
                 if "429" in str(e) or "rate" in str(e).lower():

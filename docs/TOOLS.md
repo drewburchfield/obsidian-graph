@@ -432,9 +432,9 @@ Start high, go lower:
 
 ## Limitations
 
-1. **Oversized notes:** Notes >32k tokens (~120k chars) currently skipped
-   - Planned: Automatic chunking for these notes
-   - Workaround: Manually split large notes
+1. **Oversized notes:** Notes >32k tokens (~120k chars) are automatically chunked
+   - Split into 2000-char chunks with context preserved via voyage-context-3
+   - Dynamic batch sizing adapts to chunk density
 
 2. **Empty notes:** Skipped during indexing
    - Warning logged with file path
