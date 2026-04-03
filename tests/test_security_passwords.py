@@ -88,7 +88,12 @@ def test_password_minimum_entropy():
         pytest.skip("POSTGRES_PASSWORD not set in environment")
 
     # Skip test if using placeholder or CI test values
-    if password in ["changeme", "your_generated_password_here", "your_secure_password_here", "testpassword"]:
+    if password in [
+        "changeme",
+        "your_generated_password_here",
+        "your_secure_password_here",
+        "testpassword",
+    ]:
         pytest.skip("Using placeholder/CI password - run generate-db-password.sh for production")
 
     # Minimum 32 characters (we generate 48)
@@ -186,7 +191,7 @@ def test_password_generation_script_syntax():
 
     # Script should write to .env file (not docker-compose.override.yml)
     assert "ENV_FILE=" in content, "Script should define ENV_FILE variable"
-    assert "docker-compose.override.yml" not in content, (
-        "Script should not reference docker-compose.override.yml (old pattern)"
-    )
+    assert (
+        "docker-compose.override.yml" not in content
+    ), "Script should not reference docker-compose.override.yml (old pattern)"
     assert "sed -i" in content, "Script should use sed to update the .env file in place"
