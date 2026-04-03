@@ -21,12 +21,12 @@ class HubAnalyzer:
     Thread-Safety:
         - Uses asyncio.Lock for refresh operations
         - Multiple concurrent calls to get_hub_notes/get_orphaned_notes: safe
-        - Only ONE vault refresh runs at a time (others skip if in progress)
+        - Only ONE vault refresh runs at a time (others wait for completion)
 
     Performance:
         - Refresh is O(N²) where N = number of notes
         - Triggered when >50% of notes have stale connection_count
-        - Runs in background (non-blocking for queries)
+        - Awaited inline so counts are fresh before queries return
     """
 
     def __init__(self, store: PostgreSQLVectorStore):
@@ -38,22 +38,6 @@ class HubAnalyzer:
         """
         self.store = store
         self._refresh_lock = asyncio.Lock()  # Replaces refresh_in_progress boolean
-
-    def _handle_refresh_error(self, task: asyncio.Task):
-        """
-        Error callback for background refresh tasks.
-
-        Logs errors from background connection count refresh without crashing.
-        Non-fatal - hub/orphan queries will still work with stale counts.
-
-        Args:
-            task: Completed asyncio Task to check for errors
-        """
-        try:
-            task.result()  # Raises exception if task failed
-        except Exception as e:
-            logger.error(f"Background connection count refresh failed: {e}", exc_info=True)
-            # Non-fatal - queries will work with stale counts
 
     async def get_hub_notes(
         self, min_connections: int = 10, threshold: float = 0.5, limit: int = 20
@@ -156,18 +140,20 @@ class HubAnalyzer:
 
     async def _ensure_fresh_counts(self, threshold: float):
         """
-        Ensure connection counts are fresh (or trigger background refresh).
+        Ensure connection counts are fresh before querying.
 
         Checks if any notes have stale connection_count (last_indexed_at old).
-        Triggers background refresh if needed.
+        Awaits refresh inline so counts are ready when callers query.
 
         Thread-Safety:
-            - Uses non-blocking lock check to avoid queueing multiple refreshes
-            - If refresh already running, skips check (other request will handle it)
+            - If refresh already running, waits for it to complete
+            - Uses _refresh_lock to prevent duplicate refreshes
         """
-        # Non-blocking lock check - if refresh already running, skip
+        # If refresh already running, wait for it to complete
         if self._refresh_lock.locked():
-            logger.debug("Refresh already in progress, skipping")
+            logger.debug("Refresh already in progress, waiting...")
+            async with self._refresh_lock:
+                pass  # Wait for the running refresh to finish
             return
 
         try:
@@ -184,10 +170,7 @@ class HubAnalyzer:
                     logger.info(
                         f"{stale_count}/{total_count} notes have stale counts, refreshing..."
                     )
-                    # Trigger background refresh with error handling
-                    task = asyncio.create_task(self._refresh_all_counts(threshold))
-                    task.add_done_callback(self._handle_refresh_error)
-                    logger.debug("Scheduled background refresh task")
+                    await self._refresh_all_counts(threshold)
 
         except Exception as e:
             logger.warning(f"Failed to check count freshness: {e}")
