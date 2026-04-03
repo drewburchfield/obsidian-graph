@@ -3,6 +3,6 @@ revision = 1
 requires-python = ">=3.11"
 
 [[package]]
-name = "obsidian-graph-mcp"
+name = "obsidian-graph"
 version = "1.0.0"
 source = { virtual = "." }

@@ -1,7 +1,7 @@
 [project]
-name = "obsidian-graph-mcp"
+name = "obsidian-graph"
 version = "1.0.0"
-description = "Semantic knowledge graph navigation for Obsidian vaults"
+description = "Semantic knowledge graph engine for markdown vaults"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]

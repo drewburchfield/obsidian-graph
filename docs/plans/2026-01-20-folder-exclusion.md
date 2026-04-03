@@ -124,7 +124,7 @@ drafts/
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m pytest tests/test_exclusion.py -v`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m pytest tests/test_exclusion.py -v`
 Expected: FAIL with "ModuleNotFoundError: No module named 'src.exclusion'"
 
 **Step 3: Write the exclusion module**
@@ -256,7 +256,7 @@ def load_exclusion_filter(vault_path: str) -> ExclusionFilter:
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m pytest tests/test_exclusion.py -v`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m pytest tests/test_exclusion.py -v`
 Expected: All tests PASS
 
 **Step 5: Commit**
@@ -310,7 +310,7 @@ def test_scan_vault_excludes_configured_paths(tmp_path):
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m pytest tests/test_indexer.py::test_scan_vault_excludes_configured_paths -v`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m pytest tests/test_indexer.py::test_scan_vault_excludes_configured_paths -v`
 Expected: FAIL (exclusion not integrated yet)
 
 **Step 3: Modify scan_vault to use exclusion filter**
@@ -363,7 +363,7 @@ def scan_vault(vault_path: str) -> list[Path]:
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m pytest tests/test_indexer.py -v`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m pytest tests/test_indexer.py -v`
 Expected: All tests PASS
 
 **Step 5: Commit**
@@ -417,7 +417,7 @@ async def test_file_watcher_ignores_excluded_paths(tmp_path, mock_store, mock_em
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m pytest tests/test_file_watcher.py::test_file_watcher_ignores_excluded_paths -v`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m pytest tests/test_file_watcher.py::test_file_watcher_ignores_excluded_paths -v`
 Expected: FAIL
 
 **Step 3: Modify file watcher to use exclusion filter**
@@ -523,7 +523,7 @@ In `VaultWatcher.startup_scan()` (around line 311):
 
 **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m pytest tests/test_file_watcher.py -v`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m pytest tests/test_file_watcher.py -v`
 Expected: All tests PASS
 
 **Step 6: Commit**
@@ -654,12 +654,12 @@ git commit -m "docs: add exclusion configuration documentation"
 
 **Step 1: Run all tests**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m pytest -v`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m pytest -v`
 Expected: All tests PASS
 
 **Step 2: Run linting**
 
-Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph-mcp && python -m ruff check src/ tests/`
+Run: `cd /Users/drewburchfield/dev/projects/obsidian-graph && python -m ruff check src/ tests/`
 Expected: No errors (or fix any that appear)
 
 **Step 3: Final commit if any fixes needed**
