@@ -3,6 +3,7 @@
 .env.instance
 .env.local
 .env.*.local
+docker-compose.override.yml
 
 # Embedding cache
 data/

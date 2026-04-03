@@ -36,7 +36,7 @@ echo "=============================================="
 # Check if password already exists
 if [[ -f "$ENV_FILE" ]]; then
     CURRENT_PW=$(grep "^POSTGRES_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
-    if [[ -n "$CURRENT_PW" && "$CURRENT_PW" != "changeme" && "$CURRENT_PW" != "your_secure_password_here" ]]; then
+    if [[ -n "$CURRENT_PW" && "$CURRENT_PW" != "changeme" && "$CURRENT_PW" != "your_secure_password_here" && "$CURRENT_PW" != "your_generated_password_here" ]]; then
         if [[ "${1:-}" != "--force" ]]; then
             echo -e "${YELLOW}⚠️  Password already exists in $ENV_FILE${NC}"
             echo "Use --force to regenerate (will require container restart)"
@@ -48,6 +48,11 @@ fi
 
 # Generate new password
 NEW_PASSWORD=$(generate_password)
+if [[ ${#NEW_PASSWORD} -ne 48 ]]; then
+    echo -e "${RED}✗${NC} Error: Generated password is ${#NEW_PASSWORD} characters (expected 48)"
+    echo "This may indicate a problem with /dev/urandom or system entropy"
+    exit 1
+fi
 echo -e "${GREEN}✓${NC} Generated 48-character password"
 
 # Update or create .env
@@ -62,7 +67,15 @@ if [[ ! -f "$ENV_FILE" ]]; then
     fi
 fi
 
+# Verify .env has a POSTGRES_PASSWORD line before attempting replacement
+if ! grep -q "^POSTGRES_PASSWORD=" "$ENV_FILE"; then
+    echo -e "${RED}✗${NC} Error: No POSTGRES_PASSWORD= line found in $ENV_FILE"
+    echo "Ensure your .env file contains a POSTGRES_PASSWORD= entry"
+    exit 1
+fi
+
 # Update password in env file (macOS and Linux compatible)
+# NOTE: Password is alphanumeric only, so / delimiter in sed is safe
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$NEW_PASSWORD/" "$ENV_FILE"
 else

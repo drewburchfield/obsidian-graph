@@ -74,6 +74,8 @@ def test_env_example_has_placeholder():
             assert len(value) < 32 or value in [
                 "changeme",
                 "your_password_here",
+                "your_secure_password_here",
+                "your_generated_password_here",
                 "",
             ], ".env.example should have a placeholder password, not a real one"
 
@@ -86,7 +88,7 @@ def test_password_minimum_entropy():
         pytest.skip("POSTGRES_PASSWORD not set in environment")
 
     # Skip test if using placeholder or CI test values
-    if password in ["changeme", "your_generated_password_here", "testpassword"]:
+    if password in ["changeme", "your_generated_password_here", "your_secure_password_here", "testpassword"]:
         pytest.skip("Using placeholder/CI password - run generate-db-password.sh for production")
 
     # Minimum 32 characters (we generate 48)
@@ -145,10 +147,11 @@ def test_gitignore_includes_sensitive_files():
     # Check for .env files (where secrets are stored)
     assert ".env" in content, ".gitignore should include .env files"
 
-    # Check for .env.local files (alternative naming convention)
+    # Check that docker-compose.override.yml is also ignored
+    # (may exist from older setups or manual generation)
     assert (
-        ".env.local" in content or ".env" in content
-    ), ".gitignore should include .env or .env.local files"
+        "docker-compose.override" in content or "*.override.yml" in content
+    ), ".gitignore should include docker-compose.override files"
 
 
 def test_password_generation_script_exists():
@@ -181,5 +184,9 @@ def test_password_generation_script_syntax():
 
     assert "tr -dc" in content, "Script should use tr for character filtering"
 
-    # Script should update .env directly (not docker-compose.override.yml)
-    assert ".env" in content, "Script should reference .env file"
+    # Script should write to .env file (not docker-compose.override.yml)
+    assert "ENV_FILE=" in content, "Script should define ENV_FILE variable"
+    assert "docker-compose.override.yml" not in content, (
+        "Script should not reference docker-compose.override.yml (old pattern)"
+    )
+    assert "sed -i" in content, "Script should use sed to update the .env file in place"
