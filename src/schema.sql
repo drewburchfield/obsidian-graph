@@ -6,10 +6,6 @@
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Migration: remove trigger that overwrites file mtime with DB timestamp
-DROP TRIGGER IF EXISTS trigger_update_notes_modified_at ON notes;
-DROP FUNCTION IF EXISTS update_modified_at();
-
 -- Main notes table with vector embeddings
 -- Supports chunking for large notes (voyage-context-3 pattern)
 CREATE TABLE IF NOT EXISTS notes (
@@ -33,6 +29,11 @@ CREATE TABLE IF NOT EXISTS notes (
     -- Composite unique constraint for path + chunk
     UNIQUE(path, chunk_index)
 );
+
+-- Migration: remove trigger that overwrites file mtime with DB timestamp
+-- Must be after CREATE TABLE so the table exists on fresh databases
+DROP TRIGGER IF EXISTS trigger_update_notes_modified_at ON notes;
+DROP FUNCTION IF EXISTS update_modified_at();
 
 -- HNSW index for fast cosine similarity search
 -- Configuration: m=16 (connections per layer), ef_construction=64 (build-time accuracy)

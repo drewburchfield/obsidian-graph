@@ -24,11 +24,10 @@ async def diagnose():
     successful = 0
 
     for i, file_path in enumerate(md_files, 1):
+        rel_path = str(file_path.relative_to(vault_path))
         try:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read().strip()
-
-            rel_path = str(file_path.relative_to(vault_path))
 
             if not content:
                 empty_files.append(rel_path)
