@@ -42,18 +42,3 @@ CREATE INDEX IF NOT EXISTS idx_notes_modified_at ON notes(modified_at);
 CREATE INDEX IF NOT EXISTS idx_notes_connection_count ON notes(connection_count DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_last_indexed_at ON notes(last_indexed_at);
 CREATE INDEX IF NOT EXISTS idx_notes_chunk_index ON notes(chunk_index);
-
--- Function to update modified_at timestamp automatically
-CREATE OR REPLACE FUNCTION update_modified_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.modified_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to auto-update modified_at on note updates
-CREATE TRIGGER trigger_update_notes_modified_at
-    BEFORE UPDATE ON notes
-    FOR EACH ROW
-    EXECUTE FUNCTION update_modified_at();

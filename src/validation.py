@@ -72,7 +72,7 @@ def validate_int_range(
         max_val: Maximum allowed value (inclusive)
 
     Returns:
-        Validated integer (clamped to range)
+        Validated integer. Raises ValidationError if out of range.
 
     Raises:
         ValidationError: If value is out of range
@@ -114,7 +114,7 @@ def validate_float_range(
         max_val: Maximum allowed value (inclusive)
 
     Returns:
-        Validated float (clamped to range)
+        Validated float. Raises ValidationError if out of range.
 
     Raises:
         ValidationError: If value is out of range

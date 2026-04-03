@@ -283,7 +283,7 @@ class PostgreSQLVectorStore:
                     file_size_bytes = EXCLUDED.file_size_bytes,
                     total_chunks = EXCLUDED.total_chunks,
                     last_indexed_at = CURRENT_TIMESTAMP,
-                    connection_count = 0
+                    connection_count = notes.connection_count
             """
 
             async with self.pool.acquire() as conn:
@@ -340,7 +340,7 @@ class PostgreSQLVectorStore:
                     modified_at = EXCLUDED.modified_at,
                     file_size_bytes = EXCLUDED.file_size_bytes,
                     last_indexed_at = CURRENT_TIMESTAMP,
-                    connection_count = 0
+                    connection_count = notes.connection_count
             """
 
             batch_data = [

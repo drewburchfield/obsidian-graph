@@ -70,7 +70,8 @@ class TestDatabaseFailures:
         assert len(result) == 1
         assert "Error" in result[0]["text"]
         # Should contain timeout/pool information
-        assert "pool" in result[0]["text"].lower() or "timeout" in result[0]["text"].lower()
+        text = result[0]["text"].lower()
+        assert "pool" in text or "timeout" in text
 
     @pytest.mark.asyncio
     async def test_get_similar_notes_note_not_found(self, server_context):

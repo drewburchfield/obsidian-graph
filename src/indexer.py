@@ -143,26 +143,16 @@ async def index_vault(vault_path: str, batch_size: int = 100):
                 except Exception as e:
                     logger.error(f"Error reading {file_path}: {e}")
 
-            # Filter out notes with empty content
-            # (Large notes will be auto-chunked by embed_with_chunks)
-            valid_notes = []
-            for note in notes_data:
-                if not note["content"] or len(note["content"].strip()) == 0:
-                    logger.warning(f"Skipping empty note: {note['path']}")
-                    continue
-
-                valid_notes.append(note)
-
-            if not valid_notes:
+            if not notes_data:
                 logger.warning(f"No valid notes in batch {i // batch_size + 1}")
                 continue
 
-            logger.info(f"Batch: {len(valid_notes)} valid notes")
+            logger.info(f"Batch: {len(notes_data)} valid notes")
 
             # Process each note with automatic chunking
             notes = []
             batch_failed_notes = []
-            for note_data in valid_notes:
+            for note_data in notes_data:
                 # embed_with_chunks handles both small (whole) and large (chunked) notes
                 try:
                     embeddings_list, total_chunks = embedder.embed_with_chunks(

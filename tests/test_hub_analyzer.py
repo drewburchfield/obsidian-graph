@@ -125,7 +125,7 @@ async def test_refresh_lock_prevents_concurrent_execution(mock_store):
     refresh_count = 0
     count_lock = asyncio.Lock()
 
-    original_refresh = analyzer._refresh_all_counts
+    original_refresh = analyzer._do_refresh
 
     async def tracked_refresh(threshold):
         nonlocal refresh_count
@@ -133,7 +133,7 @@ async def test_refresh_lock_prevents_concurrent_execution(mock_store):
             refresh_count += 1
         await original_refresh(threshold)
 
-    analyzer._refresh_all_counts = tracked_refresh
+    analyzer._do_refresh = tracked_refresh
 
     # Start 5 concurrent refreshes
     tasks = [asyncio.create_task(tracked_refresh(0.5)) for _ in range(5)]
@@ -222,7 +222,7 @@ async def test_refresh_updates_connection_counts(mock_store):
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
     # Run refresh
-    await analyzer._refresh_all_counts(threshold=0.5)
+    await analyzer._do_refresh(threshold=0.5)
 
     # Batched approach: 3 notes fit in 1 batch (batch_size=100), so 1 execute call
     assert mock_conn.execute.call_count == 1

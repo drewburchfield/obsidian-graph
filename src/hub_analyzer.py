@@ -9,6 +9,7 @@ import asyncio
 
 from loguru import logger
 
+from .exceptions import DatabaseError
 from .vector_store import PostgreSQLVectorStore
 
 
@@ -54,7 +55,7 @@ class HubAnalyzer:
             List of {path, title, connection_count}
         """
         if not self.store.pool:
-            raise ValueError("Store not initialized")
+            raise DatabaseError("Store not initialized - call initialize() first")
 
         try:
             # Check if connection_count needs refresh
@@ -101,7 +102,7 @@ class HubAnalyzer:
             List of {path, title, connection_count, modified_at}
         """
         if not self.store.pool:
-            raise ValueError("Store not initialized")
+            raise DatabaseError("Store not initialized - call initialize() first")
 
         try:
             # Check if connection_count needs refresh
@@ -167,16 +168,6 @@ class HubAnalyzer:
 
         except Exception as e:
             logger.warning(f"Failed to check count freshness: {e}")
-
-    async def _refresh_all_counts(self, threshold: float):
-        """
-        Refresh connection_count for all notes (acquires lock).
-
-        Convenience wrapper that acquires _refresh_lock before refreshing.
-        Prefer _do_refresh() when caller already holds the lock.
-        """
-        async with self._refresh_lock:
-            await self._do_refresh(threshold)
 
     async def _do_refresh(self, threshold: float):
         """
