@@ -103,7 +103,7 @@ async def initialize_server():
         )
 
         # Start file watching first (creates event_handler)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         vault_watcher.start(loop)
 
         # Run startup scan to catch files changed while offline
@@ -184,7 +184,9 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_connection_graph",
-            description="Build multi-hop connection graph using BFS traversal to discover relationships",
+            description=(
+                "Build multi-hop connection graph using BFS traversal" " to discover relationships"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -231,7 +233,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "threshold": {
                         "type": "number",
-                        "description": "Similarity threshold for counting connections (0.0-1.0)",
+                        "description": ("Similarity threshold for counting connections (0.0-1.0)"),
                         "default": 0.5,
                         "minimum": 0.0,
                         "maximum": 1.0,
@@ -260,7 +262,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "threshold": {
                         "type": "number",
-                        "description": "Similarity threshold for counting connections (0.0-1.0)",
+                        "description": ("Similarity threshold for counting connections (0.0-1.0)"),
                         "default": 0.5,
                         "minimum": 0.0,
                         "maximum": 1.0,
@@ -308,10 +310,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
 
             # Generate query embedding
             try:
-                query_embedding = ctx.embedder.embed(query, input_type="query")
+                query_embedding = await ctx.embedder.embed(query, input_type="query")
             except EmbeddingError as e:
                 logger.error(f"Query embedding failed: {e}", exc_info=True)
-                return [{"type": "text", "text": f"Error: Failed to generate query embedding: {e}"}]
+                return [
+                    {
+                        "type": "text",
+                        "text": f"Error: Failed to generate query embedding: {e}",
+                    }
+                ]
 
             # Search
             results = await ctx.store.search(query_embedding, limit, threshold)
@@ -322,7 +329,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
                 snippet = (
                     result.content[:200] + "..." if len(result.content) > 200 else result.content
                 )
-                response += f"{i}. **{result.title}** (similarity: {result.similarity:.3f})\n"
+                response += f"{i}. **{result.title}** " f"(similarity: {result.similarity:.3f})\n"
                 response += f"   Path: `{result.path}`\n"
                 response += f"   {snippet}\n\n"
 
@@ -342,7 +349,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
 
             # SECURITY: Validate note_path before processing
             note_path = validate_note_path_parameter(
-                validated["note_path"], vault_path=os.getenv("OBSIDIAN_VAULT_PATH", "/vault")
+                validated["note_path"],
+                vault_path=os.getenv("OBSIDIAN_VAULT_PATH", "/vault"),
             )
             limit = validated["limit"]
             threshold = validated["threshold"]
@@ -353,7 +361,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
             # Format results
             response = f"Notes similar to `{note_path}`:\n\n"
             for i, result in enumerate(results, 1):
-                response += f"{i}. **{result.title}** (similarity: {result.similarity:.3f})\n"
+                response += f"{i}. **{result.title}** " f"(similarity: {result.similarity:.3f})\n"
                 response += f"   Path: `{result.path}`\n\n"
 
             return [{"type": "text", "text": response}]
@@ -375,7 +383,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
 
             # SECURITY: Validate note_path before processing
             note_path = validate_note_path_parameter(
-                validated["note_path"], vault_path=os.getenv("OBSIDIAN_VAULT_PATH", "/vault")
+                validated["note_path"],
+                vault_path=os.getenv("OBSIDIAN_VAULT_PATH", "/vault"),
             )
             depth = validated["depth"]
             max_per_level = validated["max_per_level"]
@@ -389,7 +398,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
             # Format results
             response = f"# Connection Graph: {graph['root']['title']}\n\n"
             response += f"**Starting note:** `{graph['root']['path']}`\n"
-            response += f"**Network size:** {graph['stats']['total_nodes']} nodes, {graph['stats']['total_edges']} edges\n\n"
+            response += (
+                f"**Network size:** {graph['stats']['total_nodes']} nodes, "
+                f"{graph['stats']['total_edges']} edges\n\n"
+            )
 
             # Group nodes by level
             nodes_by_level = {}
@@ -407,10 +419,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
                     if node["parent_path"]:
                         # Find edge to get similarity
                         edge = next(
-                            (e for e in graph["edges"] if e["target"] == node["path"]), None
+                            (e for e in graph["edges"] if e["target"] == node["path"]),
+                            None,
                         )
                         if edge:
-                            response += f"  Connected from: `{node['parent_path']}` (similarity: {edge['similarity']:.3f})\n"
+                            response += (
+                                f"  Connected from: `{node['parent_path']}` "
+                                f"(similarity: {edge['similarity']:.3f})\n"
+                            )
 
             return [{"type": "text", "text": response}]
 
@@ -437,12 +453,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
 
             # Format results
             if not hubs:
-                response = f"No hub notes found with >={min_connections} connections at threshold {threshold}"
+                response = (
+                    f"No hub notes found with >={min_connections} connections "
+                    f"at threshold {threshold}"
+                )
             else:
                 response = "# Hub Notes (Highly Connected)\n\n"
-                response += f"Found {len(hubs)} notes with >={min_connections} connections:\n\n"
+                response += f"Found {len(hubs)} notes with " f">={min_connections} connections:\n\n"
                 for i, hub in enumerate(hubs, 1):
-                    response += f"{i}. **{hub['title']}** ({hub['connection_count']} connections)\n"
+                    response += (
+                        f"{i}. **{hub['title']}** " f"({hub['connection_count']} connections)\n"
+                    )
                     response += f"   Path: `{hub['path']}`\n\n"
 
             return [{"type": "text", "text": response}]
@@ -467,13 +488,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]
 
             # Format results
             if not orphans:
-                response = f"No orphaned notes found with <={max_connections} connections"
+                response = f"No orphaned notes found with " f"<={max_connections} connections"
             else:
                 response = "# Orphaned Notes (Isolated)\n\n"
-                response += f"Found {len(orphans)} notes with <={max_connections} connections:\n\n"
+                response += (
+                    f"Found {len(orphans)} notes with " f"<={max_connections} connections:\n\n"
+                )
                 for i, orphan in enumerate(orphans, 1):
                     response += (
-                        f"{i}. **{orphan['title']}** ({orphan['connection_count']} connections)\n"
+                        f"{i}. **{orphan['title']}** "
+                        f"({orphan['connection_count']} connections)\n"
                     )
                     response += f"   Path: `{orphan['path']}`\n"
                     if orphan["modified_at"]:
