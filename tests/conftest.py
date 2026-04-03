@@ -1,8 +1,7 @@
 """
-Shared test fixtures for Obsidian Graph MCP Server.
+Shared test fixtures for Obsidian Graph.
 
 Provides reusable fixtures for:
-- Event loops (module-scoped for async tests)
 - Mock stores and embedders
 - Temporary vaults with test data
 - Server contexts for integration testing

@@ -5,13 +5,12 @@ WORKDIR /app
 # Create non-root user
 RUN useradd -m -u 1000 mcpuser
 
-# Install dependencies (copy project files needed for pip install)
+# Install dependencies from pyproject.toml (deps only, not the package itself)
 COPY pyproject.toml .
-COPY src/ ./src/
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir $(python3 -c "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))")
 
-# Set ownership on source files
-RUN chown -R mcpuser:mcpuser /app/src
+# Copy source code and set ownership
+COPY --chown=mcpuser:mcpuser src/ ./src/
 
 # Create directories for data and cache
 RUN mkdir -p /home/mcpuser/.obsidian-graph/cache && \

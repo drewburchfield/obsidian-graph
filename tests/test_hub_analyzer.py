@@ -97,26 +97,24 @@ async def test_get_orphaned_notes_queries_correctly(mock_store):
 
 @pytest.mark.asyncio
 async def test_refresh_lock_serializes_concurrent_refreshes(mock_store):
-    """Test that _refresh_lock serializes concurrent _ensure_fresh_counts calls.
+    """Test that _refresh_lock serializes concurrent refresh calls.
 
-    When multiple callers trigger _ensure_fresh_counts concurrently,
-    only the first should actually refresh (others wait and re-check staleness).
+    When 5 concurrent callers acquire the lock and call _do_refresh,
+    all 5 complete but run serially (not concurrently).
     """
     analyzer = HubAnalyzer(mock_store)
 
-    # Mock database: always report stale on first check, fresh on subsequent
+    # Mock database
     mock_conn = AsyncMock()
-    call_count = 0
-
-    async def mock_fetchval(query, *args):
-        nonlocal call_count
-        call_count += 1
-        if "connection_count = 0" in query:
-            # First staleness check returns stale, subsequent return fresh
-            return 1000 if call_count <= 2 else 0
-        return 1000  # total count
-
-    mock_conn.fetchval = mock_fetchval
+    mock_conn.fetchval = AsyncMock(return_value=3)
+    mock_conn.fetch = AsyncMock(
+        side_effect=[
+            [{"path": "note1.md"}, {"path": "note2.md"}, {"path": "note3.md"}],
+            [],  # end of batches
+        ]
+        * 5  # Provide enough return values for 5 calls
+    )
+    mock_conn.execute = AsyncMock()
 
     class MockAcquire:
         async def __aenter__(self):
@@ -128,24 +126,34 @@ async def test_refresh_lock_serializes_concurrent_refreshes(mock_store):
     mock_store.pool = MagicMock()
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
-    # Track actual refresh calls
+    # Track concurrent execution
+    concurrent_count = 0
+    max_concurrent = 0
     refresh_count = 0
+
     original_do_refresh = analyzer._do_refresh
 
     async def tracked_do_refresh(threshold):
-        nonlocal refresh_count
-        refresh_count += 1
-        await asyncio.sleep(0.05)  # Simulate refresh work
+        nonlocal concurrent_count, max_concurrent, refresh_count
+        concurrent_count += 1
+        max_concurrent = max(max_concurrent, concurrent_count)
+        await asyncio.sleep(0.02)  # Give time for concurrency to manifest
         await original_do_refresh(threshold)
+        concurrent_count -= 1
+        refresh_count += 1
 
-    analyzer._do_refresh = tracked_do_refresh
+    async def locked_refresh(threshold):
+        async with analyzer._refresh_lock:
+            await tracked_do_refresh(threshold)
 
-    # Start 5 concurrent ensure_fresh_counts calls
-    tasks = [asyncio.create_task(analyzer._ensure_fresh_counts(0.5)) for _ in range(5)]
+    # Start 5 concurrent refreshes through the lock
+    tasks = [asyncio.create_task(locked_refresh(0.5)) for _ in range(5)]
     await asyncio.gather(*tasks)
 
-    # Only the first caller should have refreshed; others waited and saw fresh counts
-    assert refresh_count == 1, f"Expected 1 refresh, got {refresh_count}"
+    # All 5 should complete
+    assert refresh_count == 5, f"Expected 5 refreshes, got {refresh_count}"
+    # But max concurrency should be 1 (serialized by lock)
+    assert max_concurrent == 1, f"Expected max concurrency 1, got {max_concurrent}"
 
 
 @pytest.mark.asyncio
