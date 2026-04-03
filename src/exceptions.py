@@ -20,7 +20,7 @@ class EmbeddingError(ObsidianGraphError):
     - cause: Original exception that triggered the failure
     """
 
-    def __init__(self, message: str, text_preview: str = "", cause: Exception = None):
+    def __init__(self, message: str, text_preview: str = "", cause: Exception | None = None):
         self.text_preview = text_preview[:100]  # First 100 chars for debugging
         self.cause = cause
         super().__init__(message)

@@ -268,7 +268,7 @@ By default, the indexer excludes common system and tool folders:
 drafts/
 ```
 
-See [`.obsidian-graph.conf.example`](.obsidian-graph.conf.example) for more patterns and examples.
+See [`docs/obsidian-graph.conf.example`](docs/obsidian-graph.conf.example) for more patterns and examples.
 
 **Pattern Syntax:**
 

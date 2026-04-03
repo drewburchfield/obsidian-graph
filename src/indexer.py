@@ -157,7 +157,7 @@ async def index_vault(vault_path: str, batch_size: int = 100):
                 try:
                     embeddings_list, total_chunks = await embedder.embed_with_chunks(
                         note_data["content"],
-                        chunk_size=2000,  # oachatbot standard
+                        chunk_size=2000,
                         input_type="document",
                     )
                 except EmbeddingError as e:

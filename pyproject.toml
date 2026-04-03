@@ -3,6 +3,24 @@ name = "obsidian-graph"
 version = "1.0.0"
 description = "Semantic knowledge graph engine for markdown vaults"
 requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "asyncpg>=0.29.0",
+    "pgvector>=0.3.0",
+    "voyageai>=0.3.0",
+    "watchdog>=4.0.0",
+    "loguru>=0.7.2",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "black",
+    "ruff",
+    "mypy",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -19,7 +37,7 @@ markers = [
 source = ["src"]
 omit = [
     "tests/*",
-    "src/diagnose_vault.py",  # Diagnostic utility, not core functionality
+    "scripts/diagnose_vault.py",  # Diagnostic utility, not core functionality
 ]
 
 [tool.coverage.report]
@@ -60,7 +78,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S106", "T201", "S108", "B007", "F841", "E402"]  # Allow assert, passwords, print, /tmp, unused vars, non-top imports in tests
-"src/diagnose_vault.py" = ["T201"]  # CLI diagnostic script uses print() for output
+"scripts/diagnose_vault.py" = ["T201"]  # CLI diagnostic script uses print() for output
 
 [tool.black]
 line-length = 100
@@ -76,3 +94,36 @@ extend-exclude = '''
   | __pycache__
 )/
 '''
+
+[tool.mypy]
+python_version = "3.11"
+# Gradual adoption - relaxed settings for existing code
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_return_any = false
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+warn_no_return = true
+warn_unreachable = false
+strict_optional = false
+show_error_codes = true
+pretty = true
+# Disable error codes for gradual adoption (enable as codebase is typed)
+disable_error_code = ["var-annotated", "arg-type", "assignment", "call-overload", "return-value", "attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "src.validation"
+disallow_untyped_defs = true
+disallow_any_unimported = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = "src.security_utils"
+disallow_untyped_defs = true
+disallow_any_unimported = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["watchdog.*", "voyageai.*", "pgvector.*", "mcp.*", "loguru.*"]
+ignore_missing_imports = true

@@ -8,24 +8,10 @@ Provides reusable fixtures for:
 - Server contexts for integration testing
 """
 
-import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-
-@pytest.fixture(scope="module")
-def event_loop():
-    """
-    Module-scoped event loop for async tests.
-
-    This ensures all async tests in a module share the same event loop,
-    which is more efficient and avoids loop recreation overhead.
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture
@@ -203,7 +189,7 @@ def sample_notes():
             title="Test 1",
             content="This is test note 1",
             embedding=[0.1] * 1024,
-            modified_at=datetime.now(),
+            modified_at=datetime.now(UTC),
             file_size_bytes=100,
             chunk_index=0,
             total_chunks=1,
@@ -213,7 +199,7 @@ def sample_notes():
             title="Test 2",
             content="This is test note 2",
             embedding=[0.2] * 1024,
-            modified_at=datetime.now(),
+            modified_at=datetime.now(UTC),
             file_size_bytes=150,
             chunk_index=0,
             total_chunks=1,
