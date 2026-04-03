@@ -1,6 +1,6 @@
 # Obsidian Graph
 
-[![CI](https://github.com/drewburchfield/obsidian-graph-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/drewburchfield/obsidian-graph-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/drewburchfield/obsidian-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/drewburchfield/obsidian-graph/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io/)
@@ -152,8 +152,8 @@ This server requires a Voyage AI API key for generating embeddings:
 
 1. **Clone the repository**:
 ```bash
-git clone https://github.com/drewburchfield/obsidian-graph-mcp.git
-cd obsidian-graph-mcp
+git clone https://github.com/drewburchfield/obsidian-graph.git
+cd obsidian-graph
 ```
 
 2. **Configure environment**:

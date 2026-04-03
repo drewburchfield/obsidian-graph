@@ -8,7 +8,7 @@ Tests that database passwords are:
 4. Not logged or exposed in error messages
 
 NOTE: Path references use parents[1] for standalone repo structure:
-  tests/test_security_passwords.py -> obsidian-graph-mcp/
+  tests/test_security_passwords.py -> obsidian-graph/
 """
 
 import os
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-# Project root is parents[1] (tests -> obsidian-graph-mcp)
+# Project root is parents[1] (tests -> obsidian-graph)
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
