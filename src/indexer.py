@@ -165,7 +165,7 @@ async def index_vault(vault_path: str, batch_size: int = 100):
             for note_data in valid_notes:
                 # embed_with_chunks handles both small (whole) and large (chunked) notes
                 try:
-                    embeddings_list, total_chunks = embedder.embed_with_chunks(
+                    embeddings_list, total_chunks = await embedder.embed_with_chunks(
                         note_data["content"],
                         chunk_size=2000,  # oachatbot standard
                         input_type="document",

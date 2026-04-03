@@ -120,7 +120,8 @@ class PostgreSQLVectorStore:
 
                 # Verify notes table exists
                 table_exists = await conn.fetchval(
-                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'notes')"
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
+                    "WHERE table_name = 'notes')"
                 )
                 if not table_exists:
                     logger.warning("Notes table does not exist yet (will be created by schema.sql)")
@@ -131,6 +132,10 @@ class PostgreSQLVectorStore:
             raise VectorStoreError(f"PostgreSQL connection failed: {e}") from e
         except Exception as e:
             raise VectorStoreError(f"PostgreSQL initialization failed: {e}") from e
+
+    async def _with_timeout(self, coro, timeout=10.0):
+        """Execute a coroutine with a timeout."""
+        return await asyncio.wait_for(coro, timeout=timeout)
 
     async def _setup_connection(self, conn):
         """Setup each connection with pgvector support."""
@@ -163,7 +168,8 @@ class PostgreSQLVectorStore:
 
         if len(query_embedding) != EMBEDDING_DIMENSIONS:
             raise VectorStoreError(
-                f"Query embedding must be {EMBEDDING_DIMENSIONS} dimensions, got {len(query_embedding)}"
+                f"Query embedding must be {EMBEDDING_DIMENSIONS} dimensions, "
+                f"got {len(query_embedding)}"
             )
 
         try:
@@ -188,7 +194,8 @@ class PostgreSQLVectorStore:
             async with self.pool.acquire() as conn:
                 start_time = time.time()
                 rows = await asyncio.wait_for(
-                    conn.fetch(query, query_embedding, distance_threshold, limit), timeout=5.0
+                    conn.fetch(query, query_embedding, distance_threshold, limit),
+                    timeout=5.0,
                 )
                 query_time_ms = (time.time() - start_time) * 1000
 
@@ -230,8 +237,9 @@ class PostgreSQLVectorStore:
         try:
             async with self.pool.acquire() as conn:
                 # Fetch source note's embedding
-                source_embedding = await conn.fetchval(
-                    "SELECT embedding FROM notes WHERE path = $1", note_path
+                source_embedding = await self._with_timeout(
+                    conn.fetchval("SELECT embedding FROM notes WHERE path = $1", note_path),
+                    timeout=5.0,
                 )
 
                 if source_embedding is None:
@@ -248,6 +256,8 @@ class PostgreSQLVectorStore:
                 results = [r for r in results if r.path != note_path]
                 return results[:limit]
 
+        except TimeoutError as e:
+            raise VectorStoreError("Similar notes search timed out") from e
         except Exception as e:
             raise VectorStoreError(f"Similar notes search failed: {e}") from e
 
@@ -273,7 +283,8 @@ class PostgreSQLVectorStore:
 
         try:
             query = """
-                INSERT INTO notes (path, title, content, embedding, modified_at, file_size_bytes, chunk_index, total_chunks, last_indexed_at)
+                INSERT INTO notes (path, title, content, embedding, modified_at,
+                    file_size_bytes, chunk_index, total_chunks, last_indexed_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
                 ON CONFLICT (path, chunk_index) DO UPDATE SET
                     title = EXCLUDED.title,
@@ -287,21 +298,26 @@ class PostgreSQLVectorStore:
             """
 
             async with self.pool.acquire() as conn:
-                await conn.execute(
-                    query,
-                    note.path,
-                    note.title,
-                    note.content,
-                    note.embedding,
-                    note.modified_at,
-                    note.file_size_bytes,
-                    note.chunk_index,
-                    note.total_chunks,
+                await self._with_timeout(
+                    conn.execute(
+                        query,
+                        note.path,
+                        note.title,
+                        note.content,
+                        note.embedding,
+                        note.modified_at,
+                        note.file_size_bytes,
+                        note.chunk_index,
+                        note.total_chunks,
+                    ),
+                    timeout=10.0,
                 )
 
             logger.debug(f"Upserted note: {note.path}")
             return True
 
+        except TimeoutError as e:
+            raise VectorStoreError("Note upsert timed out") from e
         except Exception as e:
             raise VectorStoreError(f"Note upsert failed: {e}") from e
 
@@ -331,7 +347,8 @@ class PostgreSQLVectorStore:
 
         try:
             query = """
-                INSERT INTO notes (path, title, content, embedding, modified_at, file_size_bytes, chunk_index, total_chunks, last_indexed_at)
+                INSERT INTO notes (path, title, content, embedding, modified_at,
+                    file_size_bytes, chunk_index, total_chunks, last_indexed_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
                 ON CONFLICT (path, chunk_index) DO UPDATE SET
                     title = EXCLUDED.title,
@@ -359,11 +376,16 @@ class PostgreSQLVectorStore:
 
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
-                    await conn.executemany(query, batch_data)
+                    await self._with_timeout(
+                        conn.executemany(query, batch_data),
+                        timeout=30.0,
+                    )
 
             logger.info(f"Batch upserted {len(notes)} notes")
             return len(notes)
 
+        except TimeoutError as e:
+            raise VectorStoreError("Batch upsert timed out") from e
         except Exception as e:
             raise VectorStoreError(f"Batch upsert failed: {e}") from e
 
@@ -374,7 +396,12 @@ class PostgreSQLVectorStore:
 
         try:
             async with self.pool.acquire() as conn:
-                return await conn.fetchval("SELECT COUNT(*) FROM notes")
+                return await self._with_timeout(
+                    conn.fetchval("SELECT COUNT(*) FROM notes"),
+                    timeout=5.0,
+                )
+        except TimeoutError as e:
+            raise VectorStoreError("Count query timed out") from e
         except Exception as e:
             raise VectorStoreError(f"Count query failed: {e}") from e
 
@@ -397,11 +424,17 @@ class PostgreSQLVectorStore:
         try:
             async with self.pool.acquire() as conn:
                 # Use RETURNING to get distinct note count (not chunk count)
-                rows = await conn.fetch(
-                    "DELETE FROM notes WHERE path = ANY($1) RETURNING path", paths
+                rows = await self._with_timeout(
+                    conn.fetch(
+                        "DELETE FROM notes WHERE path = ANY($1) RETURNING path",
+                        paths,
+                    ),
+                    timeout=10.0,
                 )
                 # Count distinct paths (a chunked note has multiple rows with same path)
                 return len({row["path"] for row in rows})
+        except TimeoutError as e:
+            raise VectorStoreError("Delete operation timed out") from e
         except Exception as e:
             raise VectorStoreError(f"Delete failed: {e}") from e
 
@@ -417,8 +450,13 @@ class PostgreSQLVectorStore:
 
         try:
             async with self.pool.acquire() as conn:
-                rows = await conn.fetch("SELECT DISTINCT path FROM notes")
+                rows = await self._with_timeout(
+                    conn.fetch("SELECT DISTINCT path FROM notes"),
+                    timeout=10.0,
+                )
                 return [row["path"] for row in rows]
+        except TimeoutError as e:
+            raise VectorStoreError("Get paths query timed out") from e
         except Exception as e:
             raise VectorStoreError(f"Get paths failed: {e}") from e
 

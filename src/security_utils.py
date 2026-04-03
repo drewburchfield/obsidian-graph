@@ -89,8 +89,11 @@ def validate_vault_path(user_path: str, vault_root: str) -> str:
         raise SecurityError(f"Path traversal detected: {user_path}")
 
     # 4. Resolve against vault root and ensure it stays within bounds
-    vault_root_resolved = Path(vault_root).resolve()
-    full_path = (vault_root_resolved / sanitized).resolve()
+    try:
+        vault_root_resolved = Path(vault_root).resolve()
+        full_path = (vault_root_resolved / sanitized).resolve()
+    except (OSError, RuntimeError) as e:
+        raise SecurityError(f"Path resolution failed for '{user_path}': {e}") from e
 
     # Check if resolved path is still within vault
     try:

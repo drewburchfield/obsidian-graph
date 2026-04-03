@@ -72,9 +72,9 @@ def mock_embedder():
     # Return dummy 1024-dim vector (successful embedding)
     dummy_embedding = [0.1] * 1024
 
-    embedder.embed = MagicMock(return_value=dummy_embedding)
-    embedder.embed_batch = MagicMock(return_value=[dummy_embedding])
-    embedder.embed_with_chunks = MagicMock(return_value=([dummy_embedding], 1))
+    embedder.embed = AsyncMock(return_value=dummy_embedding)
+    embedder.embed_batch = AsyncMock(return_value=[dummy_embedding])
+    embedder.embed_with_chunks = AsyncMock(return_value=([dummy_embedding], 1))
     embedder.chunk_text = MagicMock(return_value=["chunk1"])
     embedder.get_cache_stats = MagicMock(
         return_value={
