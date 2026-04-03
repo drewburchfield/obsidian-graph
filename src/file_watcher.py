@@ -429,7 +429,7 @@ class ObsidianFileWatcher(FileSystemEventHandler):
 
             # Generate embedding(s) with automatic chunking for large notes
             try:
-                embeddings_list, total_chunks = self.embedder.embed_with_chunks(
+                embeddings_list, total_chunks = await self.embedder.embed_with_chunks(
                     content, chunk_size=2000, input_type="document"
                 )
             except EmbeddingError as e:

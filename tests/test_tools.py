@@ -93,7 +93,7 @@ It contains billions of neurons that form complex networks.
 
     # Generate embeddings and insert
     texts = [content for _, _, content in test_notes_content]
-    embeddings = embedder.embed_batch(texts, input_type="document")
+    embeddings = await embedder.embed_batch(texts, input_type="document")
 
     notes = []
     for (path, title, content), embedding in zip(test_notes_content, embeddings, strict=False):
@@ -123,7 +123,7 @@ async def test_search_notes_similarity_range(setup_test_data):
     """Ensure similarity scores are in [0.0, 1.0] range."""
     store, embedder = setup_test_data
 
-    query_embedding = embedder.embed("machine learning algorithms", input_type="query")
+    query_embedding = await embedder.embed("machine learning algorithms", input_type="query")
     results = await store.search(query_embedding, limit=10, threshold=0.0)
 
     for result in results:
@@ -137,7 +137,7 @@ async def test_search_notes_performance(setup_test_data):
     """Verify search latency < 500ms."""
     store, embedder = setup_test_data
 
-    query_embedding = embedder.embed("neural networks", input_type="query")
+    query_embedding = await embedder.embed("neural networks", input_type="query")
 
     start = time.time()
     results = await store.search(query_embedding, limit=10)
@@ -151,7 +151,7 @@ async def test_search_notes_threshold(setup_test_data):
     """Verify threshold filtering works."""
     store, embedder = setup_test_data
 
-    query_embedding = embedder.embed("machine learning", input_type="query")
+    query_embedding = await embedder.embed("machine learning", input_type="query")
     results = await store.search(query_embedding, limit=10, threshold=0.2)
 
     for result in results:

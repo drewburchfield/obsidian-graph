@@ -146,7 +146,7 @@ class VoyageEmbedder:
         )
         return chunks
 
-    def embed_with_chunks(
+    async def embed_with_chunks(
         self, text: str, chunk_size: int = 2000, input_type: str = "document"
     ) -> tuple[list[list[float]], int]:
         """
@@ -174,7 +174,7 @@ class VoyageEmbedder:
         # If under limit, embed whole
         if estimated_tokens < 30000:
             try:
-                embedding = self.embed(text, input_type=input_type)
+                embedding = await self.embed(text, input_type=input_type)
                 return ([embedding], 1)
             except EmbeddingError as e:
                 if _is_token_limit_error(e):
@@ -206,12 +206,12 @@ class VoyageEmbedder:
             while i < len(chunks):
                 chunk_batch = chunks[i : i + batch_size]
 
-                # Rate limit
-                self._rate_limit_sync()
+                # Rate limit (async - non-blocking)
+                await self._rate_limit_async()
 
                 try:
-                    # Embed this batch of chunks with context
-                    result = self._call_api_with_retry(
+                    # Embed this batch of chunks with context (runs in thread pool)
+                    result = await self._call_api_with_timeout(
                         self.client.contextualized_embed,
                         inputs=[chunk_batch],  # One document's chunks
                         model=self.model,

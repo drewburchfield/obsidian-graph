@@ -79,7 +79,7 @@ async def test_mcp_tools_integration(tmp_path):
         ]
 
         texts = [content for _, _, content in test_notes]
-        embeddings = embedder.embed_batch(texts, input_type="document")
+        embeddings = await embedder.embed_batch(texts, input_type="document")
 
         notes = []
         for (path, title, content), embedding in zip(test_notes, embeddings, strict=False):
@@ -101,7 +101,7 @@ async def test_mcp_tools_integration(tmp_path):
         print("\n🔍 Test 1: search_notes")
         print("-" * 60)
 
-        query_emb = embedder.embed("neural networks deep learning", input_type="query")
+        query_emb = await embedder.embed("neural networks deep learning", input_type="query")
         start = time.time()
         results = await store.search(query_emb, limit=5, threshold=0.0)
         latency_ms = (time.time() - start) * 1000

@@ -29,7 +29,7 @@ class TestEmbeddingFailures:
         from src.server import call_tool
 
         # Configure mock to raise EmbeddingError (simulating Voyage API failure)
-        server_context.embedder.embed = MagicMock(
+        server_context.embedder.embed = AsyncMock(
             side_effect=EmbeddingError("Voyage API rate limited", text_preview="test query")
         )
 
@@ -61,7 +61,7 @@ class TestDatabaseFailures:
             raise TimeoutError("Connection pool exhausted")
 
         server_context.store.search = AsyncMock(side_effect=timeout_side_effect)
-        server_context.embedder.embed = MagicMock(return_value=[0.1] * 1024)
+        server_context.embedder.embed = AsyncMock(return_value=[0.1] * 1024)
 
         # Call search_notes
         result = await call_tool("search_notes", {"query": "test", "limit": 10, "threshold": 0.5})
