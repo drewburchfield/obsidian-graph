@@ -107,9 +107,12 @@ async def get_connection_graph(ctx: ToolContext, arguments: dict[str, Any]) -> d
     validated = validate_connection_graph_args(arguments)
     note_path = validate_note_path_parameter(validated["note_path"], vault_path=ctx.vault_path)
 
-    return await ctx.graph_builder.build_connection_graph(
-        note_path, validated["depth"], validated["max_per_level"], validated["threshold"]
-    )
+    try:
+        return await ctx.graph_builder.build_connection_graph(
+            note_path, validated["depth"], validated["max_per_level"], validated["threshold"]
+        )
+    except ValueError as e:
+        raise ToolError(str(e)) from e
 
 
 async def get_hub_notes(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
