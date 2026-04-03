@@ -56,7 +56,7 @@ class ObsidianFileWatcher:
 **Thread-Safety Guarantees:**
 - ✅ Concurrent calls to `get_hub_notes()`: Safe (read-only queries)
 - ✅ Concurrent calls to `get_orphaned_notes()`: Safe (read-only queries)
-- ✅ Multiple refresh requests: Only ONE refresh runs (others skip)
+- ✅ Multiple refresh requests: Only ONE refresh runs (others wait for it)
 
 **Synchronization Mechanism**: Global async lock for refresh operations
 
@@ -71,22 +71,16 @@ class HubAnalyzer:
 | Scenario | Behavior | Performance |
 |----------|----------|-------------|
 | 20 concurrent `get_hub_notes()` calls | All execute in parallel (read-only) | Optimal |
-| 20 concurrent requests trigger refresh | Only 1 refresh runs, others skip | Optimal |
-| Refresh running, new `get_hub_notes()` call | Query executes immediately (no blocking) | Optimal |
+| 20 concurrent requests trigger refresh | 1 refresh runs, others wait then re-check | Correct |
+| Refresh running, new `get_hub_notes()` call | Waits for refresh, then queries fresh data | Correct |
 
 **Refresh Logic:**
 ```python
 async def _ensure_fresh_counts(self, threshold):
-    if self._refresh_lock.locked():  # Non-blocking check
-        return  # Skip if refresh already running
-
-    # Check staleness, schedule refresh if needed
-    asyncio.create_task(self._refresh_all_counts(threshold))
-
-async def _refresh_all_counts(self, threshold):
-    async with self._refresh_lock:  # Blocking - waits for lock
-        # Scan entire vault, update connection_count for all notes
-        ...
+    async with self._refresh_lock:  # Staleness check + refresh are atomic
+        # Check staleness inside lock to prevent TOCTOU races
+        if stale_count / total_count > 0.5:
+            await self._do_refresh(threshold)  # Inline, not fire-and-forget
 ```
 
 **Lock Granularity**: Coarse-grained (one lock for entire refresh operation)
@@ -175,7 +169,7 @@ pytest tests/test_race_conditions.py::test_hub_analyzer_concurrent_refresh_race 
 |------|------------------|-------------------|
 | File watcher same file | 10 rapid edits | 1 re-index |
 | File watcher different files | 50 concurrent files | 50 parallel re-indexes |
-| Hub analyzer refresh | 20 concurrent requests | 1 refresh execution |
+| Hub analyzer refresh | 20 concurrent requests | 1 refresh, others wait |
 
 ---
 

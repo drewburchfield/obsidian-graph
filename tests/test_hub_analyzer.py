@@ -177,11 +177,11 @@ async def test_ensure_fresh_counts_waits_if_locked(mock_store):
     await lock_acquired.wait()
 
     # While locked, ensure_fresh_counts should wait (not skip)
+    # After lock releases, it checks staleness inside the lock
     await analyzer._ensure_fresh_counts(0.5)
 
-    # After waiting for lock release, it should return without querying
-    # (the wait-and-return path doesn't query the database)
-    mock_conn.fetchval.assert_not_called()
+    # After waiting, it should have checked staleness (fetchval called)
+    assert mock_conn.fetchval.call_count >= 1, "Should check staleness after acquiring lock"
 
     await hold_task
 
@@ -247,14 +247,14 @@ async def test_staleness_check_triggers_refresh_when_needed(mock_store):
     mock_store.pool = MagicMock()
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
-    # Mock refresh
-    analyzer._refresh_all_counts = AsyncMock()
+    # Mock refresh (now _do_refresh since check+refresh are atomic inside lock)
+    analyzer._do_refresh = AsyncMock()
 
     # Check freshness - refresh is now awaited inline
     await analyzer._ensure_fresh_counts(0.5)
 
     # Should have triggered refresh (60% > 50% threshold)
-    analyzer._refresh_all_counts.assert_called_once_with(0.5)
+    analyzer._do_refresh.assert_called_once_with(0.5)
 
 
 @pytest.mark.asyncio
