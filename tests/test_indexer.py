@@ -11,7 +11,7 @@ Tests:
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -181,7 +181,7 @@ async def test_index_vault_handles_large_notes_with_chunking(tmp_path, mock_stor
     (vault / "large.md").write_text(large_content)
 
     # Mock embedder to return multiple chunks
-    mock_embedder.embed_with_chunks = MagicMock(
+    mock_embedder.embed_with_chunks = AsyncMock(
         return_value=([[0.1] * 1024, [0.2] * 1024, [0.3] * 1024], 3)  # 3 chunks  # total_chunks
     )
     mock_embedder.chunk_text = MagicMock(
