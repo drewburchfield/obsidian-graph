@@ -15,7 +15,7 @@ Be respectful, constructive, and collaborative. We're building tools to help peo
    ```bash
    docker-compose build obsidian-graph
    ```
-3. **Configure** `.env.instance` with your Voyage API key
+3. **Configure** `.env` with your Voyage API key
 4. **Start development environment**:
    ```bash
    docker-compose up -d
@@ -25,10 +25,10 @@ Be respectful, constructive, and collaborative. We're building tools to help peo
 
 ```bash
 # Quick validation
-docker exec -i mcp-obsidian-graph python test_e2e.py
+docker exec -i obsidian-graph python test_e2e.py
 
 # Full test suite
-docker exec -i mcp-obsidian-graph pytest tests/ -v
+docker exec -i obsidian-graph pytest tests/ -v
 ```
 
 ## How to Contribute
@@ -38,7 +38,7 @@ docker exec -i mcp-obsidian-graph pytest tests/ -v
 **Before submitting:**
 - Check existing issues to avoid duplicates
 - Test with latest version
-- Gather logs: `docker logs mcp-obsidian-graph`
+- Gather logs: `docker logs obsidian-graph`
 
 **Bug report should include:**
 - Steps to reproduce
@@ -113,7 +113,7 @@ New features should meet these baselines:
 ## Project Structure
 
 ```
-servers/obsidian-graph/
+obsidian-graph-mcp/
 ├── src/
 │   ├── server.py          # MCP server entry point
 │   ├── vector_store.py    # PostgreSQL operations
@@ -169,7 +169,7 @@ Currently supports Voyage Context-3 only. To add alternatives:
 
 ## Getting Help
 
-- **Issues**: https://github.com/yourusername/obsidian-graph-mcp/issues
+- **Issues**: https://github.com/drewburchfield/obsidian-graph-mcp/issues
 - **Discussions**: Use GitHub Discussions for questions
 - **MCP Community**: https://modelcontextprotocol.io/community
 

@@ -4,7 +4,7 @@ Security tests for password handling.
 Tests that database passwords are:
 1. Never hardcoded in committed files
 2. Generated randomly with sufficient entropy
-3. Synchronized between MCP server and PostgreSQL container
+3. Passed to both containers via a single .env source
 4. Not logged or exposed in error messages
 
 NOTE: Path references use parents[1] for standalone repo structure:
@@ -74,6 +74,8 @@ def test_env_example_has_placeholder():
             assert len(value) < 32 or value in [
                 "changeme",
                 "your_password_here",
+                "your_secure_password_here",
+                "your_generated_password_here",
                 "",
             ], ".env.example should have a placeholder password, not a real one"
 
@@ -86,7 +88,12 @@ def test_password_minimum_entropy():
         pytest.skip("POSTGRES_PASSWORD not set in environment")
 
     # Skip test if using placeholder or CI test values
-    if password in ["changeme", "your_generated_password_here", "testpassword"]:
+    if password in [
+        "changeme",
+        "your_generated_password_here",
+        "your_secure_password_here",
+        "testpassword",
+    ]:
         pytest.skip("Using placeholder/CI password - run generate-db-password.sh for production")
 
     # Minimum 32 characters (we generate 48)
@@ -108,7 +115,12 @@ def test_password_not_in_common_weak_list():
     """Ensure password is not a common weak password."""
     password = os.getenv("POSTGRES_PASSWORD", "")
 
-    if not password or password in ["your_generated_password_here", "testpassword"]:
+    if not password or password in [
+        "changeme",
+        "your_generated_password_here",
+        "your_secure_password_here",
+        "testpassword",
+    ]:
         pytest.skip("POSTGRES_PASSWORD not set or using placeholder/CI password")
 
     # List of passwords that should never be used
@@ -145,18 +157,15 @@ def test_gitignore_includes_sensitive_files():
     # Check for .env files (where secrets are stored)
     assert ".env" in content, ".gitignore should include .env files"
 
-    # Check for .env.instance files (alternative naming convention)
+    # Check that docker-compose.override.yml is also ignored
+    # (may exist from older setups or manual generation)
     assert (
-        ".env.instance" in content or ".env.local" in content
-    ), ".gitignore should include .env.instance or .env.local files"
+        "docker-compose.override" in content or "*.override.yml" in content
+    ), ".gitignore should include docker-compose.override files"
 
 
-@pytest.mark.skip(
-    reason="Standalone repo uses .env file for password - no generation script needed"
-)
 def test_password_generation_script_exists():
     """Verify password generation script exists and is executable."""
-    # This test is skipped for standalone repo - users configure .env directly
     script_path = PROJECT_ROOT / "scripts" / "generate-db-password.sh"
 
     assert script_path.exists(), f"Password generation script not found at {script_path}"
@@ -168,12 +177,8 @@ def test_password_generation_script_exists():
         ), f"Password generation script is not executable: {script_path}"
 
 
-@pytest.mark.skip(
-    reason="Standalone repo uses .env file for password - no generation script needed"
-)
 def test_password_generation_script_syntax():
     """Basic syntax check for password generation script."""
-    # This test is skipped for standalone repo
     script_path = PROJECT_ROOT / "scripts" / "generate-db-password.sh"
 
     if not script_path.exists():
@@ -189,29 +194,9 @@ def test_password_generation_script_syntax():
 
     assert "tr -dc" in content, "Script should use tr for character filtering"
 
+    # Script should write to .env file (not docker-compose.override.yml)
+    assert "ENV_FILE=" in content, "Script should define ENV_FILE variable"
     assert (
-        "docker-compose.override.yml" in content
-    ), "Script should create docker-compose.override.yml"
-
-
-@pytest.mark.skip(reason="Standalone repo uses .env file instead of docker-compose.override.yml")
-def test_docker_compose_override_pattern():
-    """Verify docker-compose.override.yml pattern is correct if it exists."""
-    # This test is skipped for standalone repo - password is in .env
-    override_file = PROJECT_ROOT / "docker-compose.override.yml"
-
-    if not override_file.exists():
-        pytest.skip("docker-compose.override.yml not generated yet - run generate-db-password.sh")
-
-    with open(override_file) as f:
-        content = f.read()
-
-    # Should reference environment variable, not hardcode password
-    assert (
-        "${POSTGRES_PASSWORD}" in content or "$POSTGRES_PASSWORD" in content
-    ), "docker-compose.override.yml should reference POSTGRES_PASSWORD environment variable"
-
-    # Should target the correct service
-    assert (
-        "mcp-obsidian-graph-pgvector" in content
-    ), "docker-compose.override.yml should override mcp-obsidian-graph-pgvector service"
+        "docker-compose.override.yml" not in content
+    ), "Script should not reference docker-compose.override.yml (old pattern)"
+    assert "sed -i" in content, "Script should use sed to update the .env file in place"

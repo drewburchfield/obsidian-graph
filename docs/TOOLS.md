@@ -368,7 +368,7 @@ Add to `~/.mcp.json`:
   "mcpServers": {
     "obsidian-graph": {
       "command": "docker",
-      "args": ["exec", "-i", "mcp-obsidian-graph", "python", "-m", "src.server"]
+      "args": ["exec", "-i", "obsidian-graph", "python", "-m", "src.server"]
     }
   }
 }
