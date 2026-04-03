@@ -202,25 +202,38 @@ class VoyageEmbedder:
         all_embeddings = []
 
         try:
-            for i in range(0, len(chunks), batch_size):
+            i = 0
+            while i < len(chunks):
                 chunk_batch = chunks[i : i + batch_size]
 
                 # Rate limit
                 self._rate_limit_sync()
 
-                # Embed this batch of chunks with context (with retry)
-                result = self._call_api_with_retry(
-                    self.client.contextualized_embed,
-                    inputs=[chunk_batch],  # One document's chunks
-                    model=self.model,
-                    input_type=input_type,
-                )
+                try:
+                    # Embed this batch of chunks with context
+                    result = self._call_api_with_retry(
+                        self.client.contextualized_embed,
+                        inputs=[chunk_batch],  # One document's chunks
+                        model=self.model,
+                        input_type=input_type,
+                    )
 
-                # Extract embeddings
-                batch_embeddings = result.results[0].embeddings
-                all_embeddings.extend(batch_embeddings)
+                    # Extract embeddings
+                    batch_embeddings = result.results[0].embeddings
+                    all_embeddings.extend(batch_embeddings)
 
-                logger.debug(f"Embedded chunks {i + 1}-{i + len(chunk_batch)} of {len(chunks)}")
+                    logger.debug(f"Embedded chunks {i + 1}-{i + len(chunk_batch)} of {len(chunks)}")
+                    i += batch_size
+
+                except EmbeddingError as e:
+                    if _is_token_limit_error(e) and batch_size > 1:
+                        # Halve batch size and retry this batch
+                        batch_size = max(1, batch_size // 2)
+                        logger.warning(
+                            f"Batch too large for token limit, reducing to {batch_size} chunks"
+                        )
+                        continue  # Retry same position with smaller batch
+                    raise
 
             logger.success(f"Embedded {len(all_embeddings)} chunks with context preserved")
             return (all_embeddings, len(chunks))
