@@ -1,12 +1,12 @@
 """
 Obsidian Graph MCP Server
 
-Provides semantic knowledge graph navigation for Obsidian vaults.
+MCP transport layer. Defines tool schemas, delegates to tools.py for
+execution, and formats results as MCP-compatible text responses.
 """
 
 import asyncio
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,43 +16,19 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool
 
 from .embedder import VoyageEmbedder
-from .exceptions import EmbeddingError
 from .file_watcher import VaultWatcher
 from .graph_builder import GraphBuilder
 from .hub_analyzer import HubAnalyzer
-from .security_utils import SecurityError, validate_note_path_parameter
-from .validation import (
-    ValidationError,
-    validate_connection_graph_args,
-    validate_hub_notes_args,
-    validate_orphaned_notes_args,
-    validate_search_notes_args,
-    validate_similar_notes_args,
-)
+from .security_utils import SecurityError
+from .tools import TOOLS, ToolContext, ToolError
+from .validation import ValidationError
 from .vector_store import PostgreSQLVectorStore
 
+# Global tool context (initialized once at startup)
+_tool_context: ToolContext | None = None
 
-@dataclass
-class ServerContext:
-    """
-    Encapsulates server dependencies for dependency injection and testing.
-
-    Benefits:
-        - Makes dependencies explicit
-        - Easier unit testing (inject mock context)
-        - Foundation for future full DI migration
-        - No breaking changes (internal refactor)
-    """
-
-    store: PostgreSQLVectorStore
-    embedder: VoyageEmbedder
-    graph_builder: GraphBuilder
-    hub_analyzer: HubAnalyzer
-    vault_watcher: VaultWatcher | None = None
-
-
-# Global server context (initialized once at startup)
-_server_context: ServerContext | None = None
+# Global vault watcher (separate from tool context, MCP-specific lifecycle)
+_vault_watcher: VaultWatcher | None = None
 
 # Create MCP server
 app = Server("obsidian-graph")
@@ -60,9 +36,11 @@ app = Server("obsidian-graph")
 
 async def initialize_server():
     """Initialize server context with all components."""
-    global _server_context
+    global _tool_context, _vault_watcher
 
     logger.info("Initializing Obsidian Graph MCP Server...")
+
+    vault_path = os.getenv("OBSIDIAN_VAULT_PATH", "/vault")
 
     # Initialize embedder
     embedder = VoyageEmbedder(
@@ -89,40 +67,38 @@ async def initialize_server():
     graph_builder = GraphBuilder(store)
     hub_analyzer = HubAnalyzer(store)
 
+    # Create tool context
+    _tool_context = ToolContext(
+        store=store,
+        embedder=embedder,
+        graph_builder=graph_builder,
+        hub_analyzer=hub_analyzer,
+        vault_path=vault_path,
+    )
+
     # Start file watching if enabled
-    vault_path = os.getenv("OBSIDIAN_VAULT_PATH", "/vault")
     watch_enabled = os.getenv("OBSIDIAN_WATCH_ENABLED", "true").lower() == "true"
 
-    vault_watcher = None
     if watch_enabled and os.path.exists(vault_path):
-        vault_watcher = VaultWatcher(
+        _vault_watcher = VaultWatcher(
             vault_path,
             store,
             embedder,
             debounce_seconds=int(os.getenv("OBSIDIAN_DEBOUNCE_SECONDS", "30")),
         )
 
-        # Start file watching first (creates event_handler)
         loop = asyncio.get_running_loop()
-        vault_watcher.start(loop)
-
-        # Run startup scan to catch files changed while offline
-        await vault_watcher.startup_scan()
+        _vault_watcher.start(loop)
+        await _vault_watcher.startup_scan()
 
         logger.success(f"File watching enabled: {vault_path}")
     else:
         logger.info("File watching disabled")
 
-    # Create server context
-    _server_context = ServerContext(
-        store=store,
-        embedder=embedder,
-        graph_builder=graph_builder,
-        hub_analyzer=hub_analyzer,
-        vault_watcher=vault_watcher,
-    )
-
     logger.success("Server initialized successfully")
+
+
+# -- MCP Tool Schemas --
 
 
 @app.list_tools()
@@ -233,7 +209,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "threshold": {
                         "type": "number",
-                        "description": ("Similarity threshold for counting connections (0.0-1.0)"),
+                        "description": "Similarity threshold for counting connections (0.0-1.0)",
                         "default": 0.5,
                         "minimum": 0.0,
                         "maximum": 1.0,
@@ -262,7 +238,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "threshold": {
                         "type": "number",
-                        "description": ("Similarity threshold for counting connections (0.0-1.0)"),
+                        "description": "Similarity threshold for counting connections (0.0-1.0)",
                         "default": 0.5,
                         "minimum": 0.0,
                         "maximum": 1.0,
@@ -280,241 +256,133 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+# -- Response Formatters --
+
+
+def _format_search_results(data: dict) -> str:
+    results = data["results"]
+    response = f"Found {len(results)} notes:\n\n"
+    for i, r in enumerate(results, 1):
+        snippet = r["content"][:200] + "..." if len(r["content"]) > 200 else r["content"]
+        response += f"{i}. **{r['title']}** (similarity: {r['similarity']:.3f})\n"
+        response += f"   Path: `{r['path']}`\n"
+        response += f"   {snippet}\n\n"
+    return response
+
+
+def _format_similar_notes(data: dict) -> str:
+    response = f"Notes similar to `{data['note_path']}`:\n\n"
+    for i, r in enumerate(data["results"], 1):
+        response += f"{i}. **{r['title']}** (similarity: {r['similarity']:.3f})\n"
+        response += f"   Path: `{r['path']}`\n\n"
+    return response
+
+
+def _format_connection_graph(graph: dict) -> str:
+    response = f"# Connection Graph: {graph['root']['title']}\n\n"
+    response += f"**Starting note:** `{graph['root']['path']}`\n"
+    response += (
+        f"**Network size:** {graph['stats']['total_nodes']} nodes, "
+        f"{graph['stats']['total_edges']} edges\n\n"
+    )
+
+    nodes_by_level: dict[int, list] = {}
+    for node in graph["nodes"]:
+        nodes_by_level.setdefault(node["level"], []).append(node)
+
+    for level in sorted(nodes_by_level.keys()):
+        response += f"\n## Level {level}\n"
+        for node in nodes_by_level[level]:
+            response += f"- **{node['title']}** (`{node['path']}`)\n"
+            if node["parent_path"]:
+                edge = next(
+                    (e for e in graph["edges"] if e["target"] == node["path"]),
+                    None,
+                )
+                if edge:
+                    response += (
+                        f"  Connected from: `{node['parent_path']}` "
+                        f"(similarity: {edge['similarity']:.3f})\n"
+                    )
+
+    return response
+
+
+def _format_hub_notes(data: dict) -> str:
+    hubs = data["results"]
+    if not hubs:
+        return (
+            f"No hub notes found with >={data['min_connections']} connections "
+            f"at threshold {data['threshold']}"
+        )
+
+    response = "# Hub Notes (Highly Connected)\n\n"
+    response += f"Found {len(hubs)} notes with >={data['min_connections']} connections:\n\n"
+    for i, hub in enumerate(hubs, 1):
+        response += f"{i}. **{hub['title']}** ({hub['connection_count']} connections)\n"
+        response += f"   Path: `{hub['path']}`\n\n"
+    return response
+
+
+def _format_orphaned_notes(data: dict) -> str:
+    orphans = data["results"]
+    if not orphans:
+        return f"No orphaned notes found with <={data['max_connections']} connections"
+
+    response = "# Orphaned Notes (Isolated)\n\n"
+    response += f"Found {len(orphans)} notes with <={data['max_connections']} connections:\n\n"
+    for i, orphan in enumerate(orphans, 1):
+        response += f"{i}. **{orphan['title']}** ({orphan['connection_count']} connections)\n"
+        response += f"   Path: `{orphan['path']}`\n"
+        if orphan.get("modified_at"):
+            response += f"   Modified: {orphan['modified_at']}\n"
+        response += "\n"
+    return response
+
+
+_FORMATTERS = {
+    "search_notes": _format_search_results,
+    "get_similar_notes": _format_similar_notes,
+    "get_connection_graph": _format_connection_graph,
+    "get_hub_notes": _format_hub_notes,
+    "get_orphaned_notes": _format_orphaned_notes,
+}
+
+
+# -- MCP Tool Dispatch --
+
+
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Handle tool calls with comprehensive input validation.
-
-    Security features:
-    - All parameters validated before processing
-    - Path traversal protection for note_path parameters
-    - Type checking and range validation
-    - Graceful error handling with descriptive messages
-    """
-    # Log tool call for debugging
+    """Dispatch MCP tool calls to handlers in tools.py."""
     logger.info(f"Tool called: {name} with args: {list(arguments.keys())}")
 
-    # Get server context
-    ctx = _server_context
+    ctx = _tool_context
     if ctx is None:
         logger.error("Server context not initialized")
         return [{"type": "text", "text": "Error: Server not initialized"}]
 
-    if name == "search_notes":
-        try:
-            # Validate arguments
-            validated = validate_search_notes_args(arguments)
-            query = validated["query"]
-            limit = validated["limit"]
-            threshold = validated["threshold"]
-
-            # Generate query embedding
-            try:
-                query_embedding = await ctx.embedder.embed(query, input_type="query")
-            except EmbeddingError as e:
-                logger.error(f"Query embedding failed: {e}", exc_info=True)
-                return [
-                    {
-                        "type": "text",
-                        "text": f"Error: Failed to generate query embedding: {e}",
-                    }
-                ]
-
-            # Search
-            results = await ctx.store.search(query_embedding, limit, threshold)
-
-            # Format results
-            response = f"Found {len(results)} notes:\n\n"
-            for i, result in enumerate(results, 1):
-                snippet = (
-                    result.content[:200] + "..." if len(result.content) > 200 else result.content
-                )
-                response += f"{i}. **{result.title}** " f"(similarity: {result.similarity:.3f})\n"
-                response += f"   Path: `{result.path}`\n"
-                response += f"   {snippet}\n\n"
-
-            return [{"type": "text", "text": response}]
-
-        except ValidationError as e:
-            logger.warning(f"Validation error in search_notes: {e}")
-            return [{"type": "text", "text": f"Validation Error: {str(e)}"}]
-        except Exception as e:
-            logger.error(f"Error in search_notes: {e}", exc_info=True)
-            return [{"type": "text", "text": f"Error: {str(e)}"}]
-
-    elif name == "get_similar_notes":
-        try:
-            # Validate arguments
-            validated = validate_similar_notes_args(arguments)
-
-            # SECURITY: Validate note_path before processing
-            note_path = validate_note_path_parameter(
-                validated["note_path"],
-                vault_path=os.getenv("OBSIDIAN_VAULT_PATH", "/vault"),
-            )
-            limit = validated["limit"]
-            threshold = validated["threshold"]
-
-            # Get similar notes
-            results = await ctx.store.get_similar_notes(note_path, limit, threshold)
-
-            # Format results
-            response = f"Notes similar to `{note_path}`:\n\n"
-            for i, result in enumerate(results, 1):
-                response += f"{i}. **{result.title}** " f"(similarity: {result.similarity:.3f})\n"
-                response += f"   Path: `{result.path}`\n\n"
-
-            return [{"type": "text", "text": response}]
-
-        except ValidationError as e:
-            logger.warning(f"Validation error in get_similar_notes: {e}")
-            return [{"type": "text", "text": f"Validation Error: {str(e)}"}]
-        except SecurityError as e:
-            logger.warning(f"Security validation failed for get_similar_notes: {e}")
-            return [{"type": "text", "text": f"Security Error: {str(e)}"}]
-        except Exception as e:
-            logger.error(f"Error in get_similar_notes: {e}", exc_info=True)
-            return [{"type": "text", "text": f"Error: {str(e)}"}]
-
-    elif name == "get_connection_graph":
-        try:
-            # Validate arguments
-            validated = validate_connection_graph_args(arguments)
-
-            # SECURITY: Validate note_path before processing
-            note_path = validate_note_path_parameter(
-                validated["note_path"],
-                vault_path=os.getenv("OBSIDIAN_VAULT_PATH", "/vault"),
-            )
-            depth = validated["depth"]
-            max_per_level = validated["max_per_level"]
-            threshold = validated["threshold"]
-
-            # Build connection graph
-            graph = await ctx.graph_builder.build_connection_graph(
-                note_path, depth, max_per_level, threshold
-            )
-
-            # Format results
-            response = f"# Connection Graph: {graph['root']['title']}\n\n"
-            response += f"**Starting note:** `{graph['root']['path']}`\n"
-            response += (
-                f"**Network size:** {graph['stats']['total_nodes']} nodes, "
-                f"{graph['stats']['total_edges']} edges\n\n"
-            )
-
-            # Group nodes by level
-            nodes_by_level = {}
-            for node in graph["nodes"]:
-                level = node["level"]
-                if level not in nodes_by_level:
-                    nodes_by_level[level] = []
-                nodes_by_level[level].append(node)
-
-            # Display by level
-            for level in sorted(nodes_by_level.keys()):
-                response += f"\n## Level {level}\n"
-                for node in nodes_by_level[level]:
-                    response += f"- **{node['title']}** (`{node['path']}`)\n"
-                    if node["parent_path"]:
-                        # Find edge to get similarity
-                        edge = next(
-                            (e for e in graph["edges"] if e["target"] == node["path"]),
-                            None,
-                        )
-                        if edge:
-                            response += (
-                                f"  Connected from: `{node['parent_path']}` "
-                                f"(similarity: {edge['similarity']:.3f})\n"
-                            )
-
-            return [{"type": "text", "text": response}]
-
-        except ValidationError as e:
-            logger.warning(f"Validation error in get_connection_graph: {e}")
-            return [{"type": "text", "text": f"Validation Error: {str(e)}"}]
-        except SecurityError as e:
-            logger.warning(f"Security validation failed for get_connection_graph: {e}")
-            return [{"type": "text", "text": f"Security Error: {str(e)}"}]
-        except Exception as e:
-            logger.error(f"Error in get_connection_graph: {e}", exc_info=True)
-            return [{"type": "text", "text": f"Error: {str(e)}"}]
-
-    elif name == "get_hub_notes":
-        try:
-            # Validate arguments
-            validated = validate_hub_notes_args(arguments)
-            min_connections = validated["min_connections"]
-            threshold = validated["threshold"]
-            limit = validated["limit"]
-
-            # Get hub notes
-            hubs = await ctx.hub_analyzer.get_hub_notes(min_connections, threshold, limit)
-
-            # Format results
-            if not hubs:
-                response = (
-                    f"No hub notes found with >={min_connections} connections "
-                    f"at threshold {threshold}"
-                )
-            else:
-                response = "# Hub Notes (Highly Connected)\n\n"
-                response += f"Found {len(hubs)} notes with " f">={min_connections} connections:\n\n"
-                for i, hub in enumerate(hubs, 1):
-                    response += (
-                        f"{i}. **{hub['title']}** " f"({hub['connection_count']} connections)\n"
-                    )
-                    response += f"   Path: `{hub['path']}`\n\n"
-
-            return [{"type": "text", "text": response}]
-
-        except ValidationError as e:
-            logger.warning(f"Validation error in get_hub_notes: {e}")
-            return [{"type": "text", "text": f"Validation Error: {str(e)}"}]
-        except Exception as e:
-            logger.error(f"Error in get_hub_notes: {e}", exc_info=True)
-            return [{"type": "text", "text": f"Error: {str(e)}"}]
-
-    elif name == "get_orphaned_notes":
-        try:
-            # Validate arguments
-            validated = validate_orphaned_notes_args(arguments)
-            max_connections = validated["max_connections"]
-            threshold = validated["threshold"]
-            limit = validated["limit"]
-
-            # Get orphaned notes
-            orphans = await ctx.hub_analyzer.get_orphaned_notes(max_connections, threshold, limit)
-
-            # Format results
-            if not orphans:
-                response = f"No orphaned notes found with " f"<={max_connections} connections"
-            else:
-                response = "# Orphaned Notes (Isolated)\n\n"
-                response += (
-                    f"Found {len(orphans)} notes with " f"<={max_connections} connections:\n\n"
-                )
-                for i, orphan in enumerate(orphans, 1):
-                    response += (
-                        f"{i}. **{orphan['title']}** "
-                        f"({orphan['connection_count']} connections)\n"
-                    )
-                    response += f"   Path: `{orphan['path']}`\n"
-                    if orphan["modified_at"]:
-                        response += f"   Modified: {orphan['modified_at']}\n"
-                    response += "\n"
-
-            return [{"type": "text", "text": response}]
-
-        except ValidationError as e:
-            logger.warning(f"Validation error in get_orphaned_notes: {e}")
-            return [{"type": "text", "text": f"Validation Error: {str(e)}"}]
-        except Exception as e:
-            logger.error(f"Error in get_orphaned_notes: {e}", exc_info=True)
-            return [{"type": "text", "text": f"Error: {str(e)}"}]
-
-    else:
+    handler = TOOLS.get(name)
+    if not handler:
         return [{"type": "text", "text": f"Unknown tool: {name}"}]
+
+    try:
+        result = await handler(ctx, arguments)
+        formatted = _FORMATTERS[name](result)
+        return [{"type": "text", "text": formatted}]
+
+    except ValidationError as e:
+        logger.warning(f"Validation error in {name}: {e}")
+        return [{"type": "text", "text": f"Validation Error: {str(e)}"}]
+    except SecurityError as e:
+        logger.warning(f"Security validation failed for {name}: {e}")
+        return [{"type": "text", "text": f"Security Error: {str(e)}"}]
+    except ToolError as e:
+        logger.error(f"Tool error in {name}: {e}")
+        return [{"type": "text", "text": f"Error: {str(e)}"}]
+    except Exception as e:
+        logger.error(f"Error in {name}: {e}", exc_info=True)
+        return [{"type": "text", "text": f"Error: {str(e)}"}]
 
 
 async def main():

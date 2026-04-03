@@ -120,40 +120,39 @@ async def tmp_vault(tmp_path):
 @pytest.fixture
 async def server_context(mock_store, mock_embedder):
     """
-    Mock ServerContext for testing tool handlers.
+    Mock ToolContext for testing tool handlers.
 
-    Provides complete server context with mocked dependencies.
+    Provides complete tool context with mocked dependencies.
 
-    IMPORTANT: This fixture injects the context into src.server._server_context
+    IMPORTANT: This fixture injects the context into src.server._tool_context
     so that call_tool() uses the mocked dependencies. The original context
     is restored after the test completes.
     """
     import src.server
     from src.graph_builder import GraphBuilder
     from src.hub_analyzer import HubAnalyzer
-    from src.server import ServerContext
+    from src.tools import ToolContext
 
     # Save original context
-    original_context = src.server._server_context
+    original_context = src.server._tool_context
 
     graph_builder = GraphBuilder(mock_store)
     hub_analyzer = HubAnalyzer(mock_store)
 
-    context = ServerContext(
+    context = ToolContext(
         store=mock_store,
         embedder=mock_embedder,
         graph_builder=graph_builder,
         hub_analyzer=hub_analyzer,
-        vault_watcher=None,
     )
 
     # Inject into global for call_tool()
-    src.server._server_context = context
+    src.server._tool_context = context
 
     yield context
 
     # Restore original context
-    src.server._server_context = original_context
+    src.server._tool_context = original_context
 
 
 @pytest.fixture

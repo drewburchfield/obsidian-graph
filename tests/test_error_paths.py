@@ -105,11 +105,11 @@ class TestServerInitialization:
         from src.server import call_tool
 
         # Save original context
-        original_context = src.server._server_context
+        original_context = src.server._tool_context
 
         try:
             # Temporarily set context to None (simulate initialization failure)
-            src.server._server_context = None
+            src.server._tool_context = None
 
             # Test all 5 tools
             tools = [
@@ -132,7 +132,7 @@ class TestServerInitialization:
 
         finally:
             # Restore context
-            src.server._server_context = original_context
+            src.server._tool_context = original_context
 
 
 class TestGraphBuilderErrors:
