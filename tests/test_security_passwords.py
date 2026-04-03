@@ -4,7 +4,7 @@ Security tests for password handling.
 Tests that database passwords are:
 1. Never hardcoded in committed files
 2. Generated randomly with sufficient entropy
-3. Synchronized between MCP server and PostgreSQL container
+3. Passed to both containers via a single .env source
 4. Not logged or exposed in error messages
 
 NOTE: Path references use parents[1] for standalone repo structure:

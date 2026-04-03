@@ -169,7 +169,7 @@ Currently supports Voyage Context-3 only. To add alternatives:
 
 ## Getting Help
 
-- **Issues**: https://github.com/yourusername/obsidian-graph-mcp/issues
+- **Issues**: https://github.com/drewburchfield/obsidian-graph-mcp/issues
 - **Discussions**: Use GitHub Discussions for questions
 - **MCP Community**: https://modelcontextprotocol.io/community
 
