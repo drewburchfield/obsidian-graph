@@ -1,10 +1,14 @@
--- Obsidian Graph MCP Server - PostgreSQL Schema
+-- Obsidian Graph - PostgreSQL Schema
 --
--- This schema is designed for storing whole Obsidian notes (not chunked documents)
--- with vector embeddings for semantic search and graph analysis.
+-- Stores notes (whole or chunked) with vector embeddings for
+-- semantic search, graph analysis, and hub/orphan detection.
 
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Migration: remove trigger that overwrites file mtime with DB timestamp
+DROP TRIGGER IF EXISTS trigger_update_notes_modified_at ON notes;
+DROP FUNCTION IF EXISTS update_modified_at();
 
 -- Main notes table with vector embeddings
 -- Supports chunking for large notes (voyage-context-3 pattern)
