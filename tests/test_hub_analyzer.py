@@ -277,10 +277,10 @@ async def test_staleness_check_skips_refresh_when_fresh(mock_store):
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
     # Mock refresh
-    analyzer._refresh_all_counts = AsyncMock()
+    analyzer._do_refresh = AsyncMock()
 
     # Check freshness
     await analyzer._ensure_fresh_counts(0.5)
 
     # Should NOT have triggered refresh (20% < 50% threshold)
-    analyzer._refresh_all_counts.assert_not_called()
+    analyzer._do_refresh.assert_not_called()

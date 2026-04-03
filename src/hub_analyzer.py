@@ -158,11 +158,12 @@ class HubAnalyzer:
                     )
                     total_count = await conn.fetchval("SELECT COUNT(*) FROM notes")
 
-                    if total_count > 0 and stale_count / total_count > 0.5:
-                        logger.info(
-                            f"{stale_count}/{total_count} notes have stale counts, refreshing..."
-                        )
-                        await self._do_refresh(threshold)
+                # Release pool connection before potentially long refresh
+                if total_count > 0 and stale_count / total_count > 0.5:
+                    logger.info(
+                        f"{stale_count}/{total_count} notes have stale counts, refreshing..."
+                    )
+                    await self._do_refresh(threshold)
 
         except Exception as e:
             logger.warning(f"Failed to check count freshness: {e}")
