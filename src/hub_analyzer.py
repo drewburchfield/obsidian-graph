@@ -21,12 +21,12 @@ class HubAnalyzer:
     Thread-Safety:
         - Uses asyncio.Lock for refresh operations
         - Multiple concurrent calls to get_hub_notes/get_orphaned_notes: safe
-        - Only ONE vault refresh runs at a time (others skip if in progress)
+        - Only ONE vault refresh runs at a time (others wait for completion)
 
     Performance:
         - Refresh is O(N²) where N = number of notes
         - Triggered when >50% of notes have stale connection_count
-        - Runs in background (non-blocking for queries)
+        - Awaited inline so counts are fresh before queries return
     """
 
     def __init__(self, store: PostgreSQLVectorStore):
@@ -38,22 +38,6 @@ class HubAnalyzer:
         """
         self.store = store
         self._refresh_lock = asyncio.Lock()  # Replaces refresh_in_progress boolean
-
-    def _handle_refresh_error(self, task: asyncio.Task):
-        """
-        Error callback for background refresh tasks.
-
-        Logs errors from background connection count refresh without crashing.
-        Non-fatal - hub/orphan queries will still work with stale counts.
-
-        Args:
-            task: Completed asyncio Task to check for errors
-        """
-        try:
-            task.result()  # Raises exception if task failed
-        except Exception as e:
-            logger.error(f"Background connection count refresh failed: {e}", exc_info=True)
-            # Non-fatal - queries will work with stale counts
 
     async def get_hub_notes(
         self, min_connections: int = 10, threshold: float = 0.5, limit: int = 20
@@ -156,45 +140,47 @@ class HubAnalyzer:
 
     async def _ensure_fresh_counts(self, threshold: float):
         """
-        Ensure connection counts are fresh (or trigger background refresh).
+        Ensure connection counts are fresh before querying.
 
-        Checks if any notes have stale connection_count (last_indexed_at old).
-        Triggers background refresh if needed.
+        Checks staleness and refreshes inline so counts are ready when callers query.
+        All logic runs inside the lock to prevent TOCTOU races and duplicate refreshes.
 
         Thread-Safety:
-            - Uses non-blocking lock check to avoid queueing multiple refreshes
-            - If refresh already running, skips check (other request will handle it)
+            - Staleness check and refresh are atomic (both inside _refresh_lock)
+            - Concurrent callers wait for the lock, then re-check staleness
+            - No duplicate refreshes possible
         """
-        # Non-blocking lock check - if refresh already running, skip
-        if self._refresh_lock.locked():
-            logger.debug("Refresh already in progress, skipping")
-            return
-
         try:
-            async with self.store.pool.acquire() as conn:
-                # Check how many notes have connection_count = 0 (likely stale)
-                stale_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM notes WHERE connection_count = 0"
-                )
+            async with self._refresh_lock:
+                async with self.store.pool.acquire() as conn:
+                    stale_count = await conn.fetchval(
+                        "SELECT COUNT(*) FROM notes WHERE connection_count = 0"
+                    )
+                    total_count = await conn.fetchval("SELECT COUNT(*) FROM notes")
 
-                # If >50% of notes have count=0, trigger refresh
-                total_count = await conn.fetchval("SELECT COUNT(*) FROM notes")
-
+                # Release pool connection before potentially long refresh
                 if total_count > 0 and stale_count / total_count > 0.5:
                     logger.info(
                         f"{stale_count}/{total_count} notes have stale counts, refreshing..."
                     )
-                    # Trigger background refresh with error handling
-                    task = asyncio.create_task(self._refresh_all_counts(threshold))
-                    task.add_done_callback(self._handle_refresh_error)
-                    logger.debug("Scheduled background refresh task")
+                    await self._do_refresh(threshold)
 
         except Exception as e:
             logger.warning(f"Failed to check count freshness: {e}")
 
     async def _refresh_all_counts(self, threshold: float):
         """
-        Background task to refresh connection_count for all notes.
+        Refresh connection_count for all notes (acquires lock).
+
+        Convenience wrapper that acquires _refresh_lock before refreshing.
+        Prefer _do_refresh() when caller already holds the lock.
+        """
+        async with self._refresh_lock:
+            await self._do_refresh(threshold)
+
+    async def _do_refresh(self, threshold: float):
+        """
+        Refresh connection_count for all notes (caller must hold _refresh_lock).
 
         Uses batched SQL approach instead of O(N²) individual queries.
         Computes counts in batches to balance memory usage and performance.
@@ -202,82 +188,75 @@ class HubAnalyzer:
         Args:
             threshold: Similarity threshold for counting connections
 
-        Thread-Safety:
-            - Acquires self._refresh_lock to ensure exclusive execution
-            - Blocks until lock available (serializes concurrent refresh requests)
-            - Lock automatically released after completion or error
-
         Performance:
             - Processes notes in batches of 100 to avoid memory issues
             - Each batch uses a single SQL query with vector distance computation
             - Total complexity: O(N * B) where B = batch size, much better than O(N²)
         """
-        async with self._refresh_lock:  # Acquire lock (blocks until available)
-            logger.info("Starting background connection count refresh (lock acquired)...")
+        logger.info("Starting connection count refresh...")
 
-            try:
-                distance_threshold = 1.0 - threshold
-                batch_size = 100  # Process 100 notes at a time
+        try:
+            distance_threshold = 1.0 - threshold
+            batch_size = 100  # Process 100 notes at a time
 
-                async with self.store.pool.acquire() as conn:
-                    # Get total count for progress logging
-                    total_notes = await conn.fetchval(
-                        "SELECT COUNT(*) FROM notes WHERE embedding IS NOT NULL"
+            async with self.store.pool.acquire() as conn:
+                # Get total count for progress logging
+                total_notes = await conn.fetchval(
+                    "SELECT COUNT(*) FROM notes WHERE embedding IS NOT NULL"
+                )
+
+                if total_notes == 0:
+                    logger.info("No notes with embeddings to refresh")
+                    return
+
+                logger.info(f"Refreshing connection counts for {total_notes} notes...")
+
+                # Process in batches using OFFSET/LIMIT
+                processed = 0
+                for offset in range(0, total_notes, batch_size):
+                    # Get batch of note paths
+                    batch_paths = await conn.fetch(
+                        """
+                        SELECT path FROM notes
+                        WHERE embedding IS NOT NULL
+                        ORDER BY path
+                        LIMIT $1 OFFSET $2
+                        """,
+                        batch_size,
+                        offset,
                     )
 
-                    if total_notes == 0:
-                        logger.info("No notes with embeddings to refresh")
-                        return
+                    if not batch_paths:
+                        break
 
-                    logger.info(f"Refreshing connection counts for {total_notes} notes...")
+                    # Update counts for this batch using a single efficient query
+                    # Paths come from database (already validated on insertion), not user input
+                    await conn.execute(
+                        """
+                        UPDATE notes AS n
+                        SET connection_count = subq.cnt,
+                            last_indexed_at = CURRENT_TIMESTAMP
+                        FROM (
+                            SELECT n1.path, COUNT(n2.path) AS cnt
+                            FROM notes n1
+                            LEFT JOIN notes n2 ON n1.path != n2.path
+                                AND n2.embedding IS NOT NULL
+                                AND (n1.embedding <=> n2.embedding) <= $1
+                            WHERE n1.path = ANY($2::text[])
+                                AND n1.embedding IS NOT NULL
+                            GROUP BY n1.path
+                        ) AS subq
+                        WHERE n.path = subq.path
+                        """,
+                        distance_threshold,
+                        [r["path"] for r in batch_paths],
+                    )
 
-                    # Process in batches using OFFSET/LIMIT
-                    processed = 0
-                    for offset in range(0, total_notes, batch_size):
-                        # Get batch of note paths
-                        batch_paths = await conn.fetch(
-                            """
-                            SELECT path FROM notes
-                            WHERE embedding IS NOT NULL
-                            ORDER BY path
-                            LIMIT $1 OFFSET $2
-                            """,
-                            batch_size,
-                            offset,
-                        )
+                    processed += len(batch_paths)
+                    if processed % 500 == 0 or processed == total_notes:
+                        logger.debug(f"Refreshed {processed}/{total_notes} notes")
 
-                        if not batch_paths:
-                            break
+            logger.success(f"Connection count refresh complete ({total_notes} notes)")
 
-                        # Update counts for this batch using a single efficient query
-                        # This computes connection counts for all notes in the batch at once
-                        await conn.execute(
-                            """
-                            UPDATE notes AS n
-                            SET connection_count = subq.cnt,
-                                last_indexed_at = CURRENT_TIMESTAMP
-                            FROM (
-                                SELECT n1.path, COUNT(n2.path) AS cnt
-                                FROM notes n1
-                                LEFT JOIN notes n2 ON n1.path != n2.path
-                                    AND n2.embedding IS NOT NULL
-                                    AND (n1.embedding <=> n2.embedding) <= $1
-                                WHERE n1.path = ANY($2::text[])
-                                    AND n1.embedding IS NOT NULL
-                                GROUP BY n1.path
-                            ) AS subq
-                            WHERE n.path = subq.path
-                            """,
-                            distance_threshold,
-                            [r["path"] for r in batch_paths],
-                        )
-
-                        processed += len(batch_paths)
-                        if processed % 500 == 0 or processed == total_notes:
-                            logger.debug(f"Refreshed {processed}/{total_notes} notes")
-
-                logger.success(f"Connection count refresh complete ({total_notes} notes)")
-
-            except Exception as e:
-                logger.error(f"Connection count refresh failed: {e}")
-        # Lock automatically released here
+        except Exception as e:
+            logger.error(f"Connection count refresh failed: {e}")

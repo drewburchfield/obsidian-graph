@@ -146,8 +146,8 @@ async def test_refresh_lock_prevents_concurrent_execution(mock_store):
 
 
 @pytest.mark.asyncio
-async def test_ensure_fresh_counts_skips_if_locked(mock_store):
-    """Test that _ensure_fresh_counts skips check if refresh already running."""
+async def test_ensure_fresh_counts_waits_if_locked(mock_store):
+    """Test that _ensure_fresh_counts waits for lock when refresh already running."""
     analyzer = HubAnalyzer(mock_store)
 
     # Mock database
@@ -164,13 +164,26 @@ async def test_ensure_fresh_counts_skips_if_locked(mock_store):
     mock_store.pool = MagicMock()
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
-    # Acquire lock to simulate refresh in progress
-    async with analyzer._refresh_lock:
-        # While locked, ensure_fresh_counts should skip immediately
-        await analyzer._ensure_fresh_counts(0.5)
+    # Acquire lock in a background task to simulate refresh in progress,
+    # then release it after a short delay so _ensure_fresh_counts can proceed
+    lock_acquired = asyncio.Event()
 
-        # Should not have queried database (skipped due to lock)
-        mock_conn.fetchval.assert_not_called()
+    async def hold_lock_briefly():
+        async with analyzer._refresh_lock:
+            lock_acquired.set()
+            await asyncio.sleep(0.05)  # Hold lock briefly
+
+    hold_task = asyncio.create_task(hold_lock_briefly())
+    await lock_acquired.wait()
+
+    # While locked, ensure_fresh_counts should wait (not skip)
+    # After lock releases, it checks staleness inside the lock
+    await analyzer._ensure_fresh_counts(0.5)
+
+    # After waiting, it should have checked staleness (fetchval called)
+    assert mock_conn.fetchval.call_count >= 1, "Should check staleness after acquiring lock"
+
+    await hold_task
 
 
 @pytest.mark.asyncio
@@ -234,18 +247,14 @@ async def test_staleness_check_triggers_refresh_when_needed(mock_store):
     mock_store.pool = MagicMock()
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
-    # Mock refresh
-    analyzer._refresh_all_counts = AsyncMock()
+    # Mock refresh (now _do_refresh since check+refresh are atomic inside lock)
+    analyzer._do_refresh = AsyncMock()
 
-    # Check freshness
+    # Check freshness - refresh is now awaited inline
     await analyzer._ensure_fresh_counts(0.5)
 
-    # Allow background task to be scheduled
-    await asyncio.sleep(0.1)
-
     # Should have triggered refresh (60% > 50% threshold)
-    # Note: refresh runs via asyncio.create_task, so we check it was called
-    # The actual scheduling depends on event loop timing
+    analyzer._do_refresh.assert_called_once_with(0.5)
 
 
 @pytest.mark.asyncio
@@ -268,10 +277,10 @@ async def test_staleness_check_skips_refresh_when_fresh(mock_store):
     mock_store.pool.acquire = MagicMock(return_value=MockAcquire())
 
     # Mock refresh
-    analyzer._refresh_all_counts = AsyncMock()
+    analyzer._do_refresh = AsyncMock()
 
     # Check freshness
     await analyzer._ensure_fresh_counts(0.5)
 
     # Should NOT have triggered refresh (20% < 50% threshold)
-    analyzer._refresh_all_counts.assert_not_called()
+    analyzer._do_refresh.assert_not_called()

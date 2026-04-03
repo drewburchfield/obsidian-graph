@@ -152,17 +152,16 @@ async def test_hub_analyzer_concurrent_refresh_race():
 
     Race condition scenario:
     - 20 concurrent requests call _ensure_fresh_counts()
-    - All detect stale counts
-    - All schedule refresh via asyncio.create_task()
-    - Only ONE actual vault scan should execute
+    - First caller acquires lock, checks staleness, runs refresh
+    - Other callers wait for lock, then re-check staleness (now fresh), skip refresh
 
-    Without proper locking, multiple refreshes can run concurrently (expensive!).
+    The lock serializes both the staleness check and refresh atomically,
+    preventing duplicate refreshes.
     """
     # Create mock store
     mock_pool = MagicMock()
     mock_conn = AsyncMock()
 
-    # Mock the connection acquisition
     class MockAcquire:
         async def __aenter__(self):
             return mock_conn
@@ -172,46 +171,31 @@ async def test_hub_analyzer_concurrent_refresh_race():
 
     mock_pool.acquire = MagicMock(return_value=MockAcquire())
 
-    # Mock queries to simulate stale counts (triggers refresh)
-    # Note: stale_count/total_count must be > 0.5 to trigger refresh
-    mock_conn.fetchval = AsyncMock(
-        side_effect=[
-            501,  # stale_count (first call) - 501/1000 > 0.5 triggers refresh
-            1000,  # total_count (second call)
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,  # Repeat for concurrent calls
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-            501,
-            1000,
-        ]
-    )
+    mock_store = MagicMock()
+    mock_store.pool = mock_pool
 
-    # Mock fetch for refresh operation
+    analyzer = HubAnalyzer(mock_store)
+
+    # Track refresh executions
+    refresh_count = 0
+
+    # First caller sees stale counts (501/1000 > 50%), triggers refresh.
+    # After refresh, subsequent callers see fresh counts (0/1000 = 0%, no refresh needed).
+    call_count = 0
+
+    async def mock_fetchval(query):
+        nonlocal call_count
+        call_count += 1
+        if "connection_count = 0" in query:
+            # First check returns stale, subsequent checks return fresh
+            return 501 if call_count <= 1 else 0
+        if "COUNT(*) FROM notes" in query:
+            return 1000
+        if "embedding IS NOT NULL" in query:
+            return 2
+        return 0
+
+    mock_conn.fetchval = mock_fetchval
     mock_conn.fetch = AsyncMock(
         return_value=[
             {"path": "note1.md", "embedding": [0.1] * 1024},
@@ -220,45 +204,24 @@ async def test_hub_analyzer_concurrent_refresh_race():
     )
     mock_conn.execute = AsyncMock()
 
-    mock_store = MagicMock()
-    mock_store.pool = mock_pool
-
-    # Create hub analyzer
-    analyzer = HubAnalyzer(mock_store)
-
-    # Track number of actual refresh executions
-    refresh_count = 0
-    refresh_lock = asyncio.Lock()
-
-    original_refresh = analyzer._refresh_all_counts
+    original_do_refresh = analyzer._do_refresh
 
     async def tracked_refresh(threshold):
         nonlocal refresh_count
-        async with refresh_lock:
-            refresh_count += 1
-        # Call original to test actual logic
-        await original_refresh(threshold)
+        refresh_count += 1
+        await original_do_refresh(threshold)
 
-    analyzer._refresh_all_counts = tracked_refresh
+    analyzer._do_refresh = tracked_refresh
 
-    # Simulate 20 concurrent requests triggering refresh
+    # Simulate 20 concurrent requests
     tasks = [analyzer._ensure_fresh_counts(0.5) for _ in range(20)]
-
     await asyncio.gather(*tasks)
 
-    # Allow background tasks to complete
-    await asyncio.sleep(0.5)
-
-    # The design allows multiple refreshes to be scheduled (all concurrent calls see stale counts).
-    # The lock ensures they execute SERIALLY, not concurrently.
-    # This test verifies the lock is working: with 20 concurrent calls,
-    # some will schedule refreshes, but they'll run one at a time.
-    # We accept that multiple refreshes may run, as long as they don't run concurrently.
-    # Note: This is a design trade-off - preventing scheduling entirely would require
-    # a more complex "refresh scheduled" flag with atomic compare-and-swap semantics.
-    assert refresh_count <= 20, (
-        f"More refreshes than requests: got {refresh_count} refreshes for 20 requests. "
-        "This suggests a bug in the test or logic."
+    # With atomic check+refresh inside lock, only 1 refresh should run.
+    # Subsequent callers re-check staleness after acquiring lock and find counts are fresh.
+    assert refresh_count == 1, (
+        f"Expected exactly 1 refresh, got {refresh_count}. "
+        "The lock should serialize check+refresh atomically."
     )
 
 
