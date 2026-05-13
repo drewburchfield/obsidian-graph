@@ -1,35 +1,70 @@
 name: CI
 
+# Every job installs Aikido safe-chain before running uv sync so dependency
+# installs are checked against Aikido Intel's malware feed. Version pinned in
+# the install step. The pip-shim assertion after install confirms the wrapper
+# is actually intercepting pip: if it ever silently falls back to unprotected
+# pip (PATH mis-ordering, shim not on disk), CI fails loudly.
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
+
+# Workflow-wide default. Jobs only need read access; a future job that needs
+# more (e.g. release publishing) should opt in at the job level.
+permissions:
+  contents: read
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      # safe-chain version is pinned: a future regression should not silently
+      # break the build. Bump deliberately when a known-good newer version exists.
+      - name: Install safe-chain
         run: |
-          pip install ruff black mypy
-          pip install $(python3 -c "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))")
+          curl -fsSL https://github.com/AikidoSec/safe-chain/releases/download/1.5.3/install-safe-chain.sh | sh -s -- --ci
+          echo "$HOME/.safe-chain/shims" >> "$GITHUB_PATH"
+          echo "$HOME/.safe-chain/bin"   >> "$GITHUB_PATH"
+
+      # Confirms the pip wrapper is active. Without this, a broken install
+      # falls back to unprotected pip and CI still passes (silent bypass).
+      - name: Verify safe-chain is wrapping pip
+        run: |
+          safe-chain --version
+          case "$(command -v pip)" in "$HOME"/.safe-chain/shims/*) echo "ok: $(command -v pip)";; *) echo "safe-chain pip shim not on PATH" >&2; exit 1;; esac
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.11"
+
+      # `--locked` asserts uv.lock matches pyproject.toml and fails the job
+      # if not. This catches the case where someone bumps a dep in
+      # pyproject.toml but forgets to run `uv lock`: with `--frozen` CI would
+      # silently install the stale lockfile and the missing dep would only
+      # surface in prod. Docker uses `--frozen` deliberately for reproducible
+      # builds from the committed lockfile.
+      - name: Sync dependencies (with dev extras)
+        run: uv sync --locked --extra dev
 
       - name: Run ruff
-        run: ruff check src/ tests/ scripts/
+        run: uv run ruff check src/ tests/ scripts/
 
       - name: Run black (check only)
-        run: black --check src/ tests/ scripts/
+        run: uv run black --check src/ tests/ scripts/
 
       - name: Run mypy
-        run: mypy src/ --ignore-missing-imports
+        run: uv run mypy src/ --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
@@ -49,15 +84,37 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install $(python3 -c "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))") pytest pytest-asyncio
+      - name: Install safe-chain
+        run: |
+          curl -fsSL https://github.com/AikidoSec/safe-chain/releases/download/1.5.3/install-safe-chain.sh | sh -s -- --ci
+          echo "$HOME/.safe-chain/shims" >> "$GITHUB_PATH"
+          echo "$HOME/.safe-chain/bin"   >> "$GITHUB_PATH"
+
+      - name: Verify safe-chain is wrapping pip
+        run: |
+          safe-chain --version
+          case "$(command -v pip)" in "$HOME"/.safe-chain/shims/*) echo "ok: $(command -v pip)";; *) echo "safe-chain pip shim not on PATH" >&2; exit 1;; esac
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.11"
+
+      # `--locked` asserts uv.lock matches pyproject.toml and fails the job
+      # if not. This catches the case where someone bumps a dep in
+      # pyproject.toml but forgets to run `uv lock`: with `--frozen` CI would
+      # silently install the stale lockfile and the missing dep would only
+      # surface in prod. Docker uses `--frozen` deliberately for reproducible
+      # builds from the committed lockfile.
+      - name: Sync dependencies (with dev extras)
+        run: uv sync --locked --extra dev
 
       - name: Initialize database schema
         env:
@@ -72,17 +129,28 @@ jobs:
           POSTGRES_PASSWORD: testpassword
           POSTGRES_DB: obsidian_graph
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-        run: pytest tests/ -v -m "not e2e" --ignore=tests/test_e2e.py
+        run: uv run pytest tests/ -v -m "not e2e" --ignore=tests/test_e2e.py
 
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Install safe-chain
+        run: |
+          curl -fsSL https://github.com/AikidoSec/safe-chain/releases/download/1.5.3/install-safe-chain.sh | sh -s -- --ci
+          echo "$HOME/.safe-chain/shims" >> "$GITHUB_PATH"
+          echo "$HOME/.safe-chain/bin"   >> "$GITHUB_PATH"
+
+      - name: Verify safe-chain is wrapping pip
+        run: |
+          safe-chain --version
+          case "$(command -v pip)" in "$HOME"/.safe-chain/shims/*) echo "ok: $(command -v pip)";; *) echo "safe-chain pip shim not on PATH" >&2; exit 1;; esac
 
       - name: Install bandit
         run: pip install bandit
@@ -93,11 +161,11 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build Docker image
         run: docker build -t obsidian-graph .
 
       - name: Verify image runs
         run: |
-          docker run --rm obsidian-graph python -c "from src.server import app; print('Import successful')"
+          docker run --rm obsidian-graph .venv/bin/python -c "from src.server import app; print('Import successful')"
