@@ -48,8 +48,14 @@ jobs:
         with:
           version: "0.5.11"
 
+      # `--locked` asserts uv.lock matches pyproject.toml and fails the job
+      # if not. This catches the case where someone bumps a dep in
+      # pyproject.toml but forgets to run `uv lock`: with `--frozen` CI would
+      # silently install the stale lockfile and the missing dep would only
+      # surface in prod. Docker uses `--frozen` deliberately for reproducible
+      # builds from the committed lockfile.
       - name: Sync dependencies (with dev extras)
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Run ruff
         run: uv run ruff check src/ tests/ scripts/
@@ -101,8 +107,14 @@ jobs:
         with:
           version: "0.5.11"
 
+      # `--locked` asserts uv.lock matches pyproject.toml and fails the job
+      # if not. This catches the case where someone bumps a dep in
+      # pyproject.toml but forgets to run `uv lock`: with `--frozen` CI would
+      # silently install the stale lockfile and the missing dep would only
+      # surface in prod. Docker uses `--frozen` deliberately for reproducible
+      # builds from the committed lockfile.
       - name: Sync dependencies (with dev extras)
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Initialize database schema
         env:

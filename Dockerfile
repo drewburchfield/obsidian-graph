@@ -39,8 +39,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /usr/local/bin/
 # Copy lockfile + pyproject so the install step caches independent of source.
 COPY pyproject.toml uv.lock ./
 
-# `--frozen` rejects any drift between lockfile and pyproject; `--no-dev`
-# skips dev extras (pytest, ruff, etc.) for a slim runtime image;
+# `--frozen` installs from the lockfile without re-resolving, so Docker
+# builds are bit-for-bit reproducible against the committed uv.lock. CI
+# uses `--locked` instead (which fails if pyproject.toml has drifted from
+# uv.lock); the Dockerfile deliberately does not, because rebuilding a
+# pinned image should never depend on pyproject.toml. `--no-dev` skips dev
+# extras (pytest, ruff, etc.) for a slim runtime image;
 # `--no-install-project` because src/ has not been copied yet at this layer.
 RUN uv sync --frozen --no-dev --no-install-project
 
